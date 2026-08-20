@@ -63,7 +63,7 @@ async def text_to_speech_task(chat_id, text, msg, context):
         await context.bot.edit_message_text("បង្កើតសំឡេងបានជោគជ័យ! កំពុងផ្ញើ... ✅", chat_id=chat_id, message_id=msg.message_id)
         await context.bot.send_audio(chat_id=chat_id, audio=open(out_file, 'rb'), title="Audio Narration")
     except Exception as e:
-        await context.bot.edit_message_text(f"មានបញ្ហាក្នុងការបង្កើតសំឡេង។\nកំហុស: {str(e)[:100]}", chat_id=chat_id, message_id=msg.message_id)
+        await context.bot.edit_message_text(f"មានបញ្ហាក្នុងการបង្កើតសំឡេង។\nកំហុស: {str(e)[:100]}", chat_id=chat_id, message_id=msg.message_id)
     finally:
         if os.path.exists(out_file): os.remove(out_file)
         if msg:
@@ -367,7 +367,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 # ==========================================
 async def start_tts(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
-    await query.edit_message_text("✅ សូមវាយ ឬ Copy អត្ថបទ បันចូលមកទីនេះ ខ្ញុំនឹងអានវាជាសំឡេងជូនអ្នក។")
+    await query.edit_message_text("✅ សូមវាយ ឬ Copy អត្ថបទ បញ្ចូលមកទីនេះ ខ្ញុំនឹងអានវាជាសំឡេងជូនអ្នក។")
     return WAITING_FOR_TTS
 
 async def receive_tts_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -724,7 +724,7 @@ def main() -> None:
             WAITING_FOR_MEDIA_URL: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_media_url)],
             WAITING_FOR_TTS: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_tts_text)],
             WAITING_FOR_TRANSLATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_translate_text)],
-            WAITING_FOR_REMOVE_BG: [MessageHandler(filters.PHOTO | filters.Document.IMAGE, receive_រូបថត | filters.Document.ALL), receive_remove_bg_image] if 'filters.Document.ALL' else [MessageHandler(filters.PHOTO | filters.Document.IMAGE, receive_remove_bg_image)],
+            WAITING_FOR_REMOVE_BG: [MessageHandler(filters.PHOTO | filters.Document.IMAGE, receive_remove_bg_image)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
         allow_reentry=True
