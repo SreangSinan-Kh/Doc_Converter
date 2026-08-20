@@ -17,7 +17,7 @@ from PIL import Image
 import pytesseract
 from typing import Final
 
-# នាំចូល Library (មិនមាន rembg នៅទីនេះទេ ដើម្បីកុំឱ្យស៊ីពេល Startup)
+# នាំចូល Library មូលដ្ឋាន
 try:
     from PyPDF2 import PdfReader, PdfWriter, PdfMerger
     from pdf2image import convert_from_path
@@ -50,12 +50,12 @@ PORT: Final = int(os.environ.get("PORT", "8080"))
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 
 # ==========================================
-# អនុគមន៍ថ្មីទាំង ៣ (TTS, Translate, Remove BG)
+# អនុគមន៍បំពេញការងារ (Background Tasks)
 # ==========================================
 async def text_to_speech_task(chat_id, text, msg, context):
+    out_file = f"audio_narration_{chat_id}.mp3"
     try:
         await context.bot.edit_message_text("កំពុងបង្កើតសំឡេងអាន (សូមរង់ចាំ)... 🎙️", chat_id=chat_id, message_id=msg.message_id)
-        out_file = f"audio_narration_{chat_id}.mp3"
         def create_audio():
             tts = gTTS(text=text, lang='km')
             tts.save(out_file)
@@ -66,6 +66,9 @@ async def text_to_speech_task(chat_id, text, msg, context):
         await context.bot.edit_message_text(f"មានបញ្ហាក្នុងការបង្កើតសំឡេង។\nកំហុស: {str(e)[:100]}", chat_id=chat_id, message_id=msg.message_id)
     finally:
         if os.path.exists(out_file): os.remove(out_file)
+        if msg:
+            try: await context.bot.delete_message(chat_id=chat_id, message_id=msg.message_id)
+            except Exception: pass
 
 async def translate_text_task(chat_id, text, msg, context):
     try:
@@ -80,17 +83,13 @@ async def remove_bg_task(chat_id, file_path, msg, context):
     out_file = f"nobg_{chat_id}.png"
     try:
         await context.bot.edit_message_text("កំពុងលុបផ្ទៃខាងក្រោយដោយប្រើ AI (អាចប្រើពេលបន្តិច)... ✂️", chat_id=chat_id, message_id=msg.message_id)
-        
-        # Lazy Import នៅទីនេះ ដើម្បីការពារការគាំងពេល Startup
         from rembg import remove
-        
         def process_image():
             with open(file_path, 'rb') as i:
                 input_data = i.read()
             output_data = remove(input_data)
             with open(out_file, 'wb') as o:
                 o.write(output_data)
-
         await asyncio.to_thread(process_image)
         await context.bot.edit_message_text("លុបផ្ទៃខាងក្រោយបានជោគជ័យ! កំពុងផ្ញើ... ✅", chat_id=chat_id, message_id=msg.message_id)
         await context.bot.send_document(chat_id=chat_id, document=open(out_file, 'rb'), filename="Removed_Background.png")
@@ -100,9 +99,6 @@ async def remove_bg_task(chat_id, file_path, msg, context):
         if os.path.exists(file_path): os.remove(file_path)
         if os.path.exists(out_file): os.remove(out_file)
 
-# ==========================================
-# អនុគមន៍ជំនួយការងារផ្សេងៗ
-# ==========================================
 async def pdf_to_word_task(chat_id, file_path, msg, context):
     output_path = f"converted_{chat_id}.docx"
     try:
@@ -126,7 +122,6 @@ async def download_media_task(chat_id, url, msg, context):
             'noplaylist': True,
             'quiet': True
         }
-        # បើមាន cookies.txt ប្រើប្រាស់វាដើម្បីឆ្លងកាត់ការទប់ស្កាត់ពី YouTube
         if os.path.exists('cookies.txt'):
             ydl_opts['cookiefile'] = 'cookies.txt'
 
@@ -160,8 +155,7 @@ async def merge_pdf_task(chat_id, file_paths, msg, context):
     output_path = f"merged_{chat_id}.pdf"
     try:
         merger = PdfMerger()
-        for path in file_paths:
-            merger.append(path)
+        for path in file_paths: merger.append(path)
         merger.write(output_path)
         merger.close()
         await context.bot.edit_message_text("បញ្ចូលឯកសារបានជោគជ័យ! ✅", chat_id=chat_id, message_id=msg.message_id)
@@ -303,7 +297,7 @@ async def extract_archive_task(chat_id, file_path, msg, context):
         if os.path.isdir(extract_dir): shutil.rmtree(extract_dir)
 
 # ==========================================
-# ការរៀបចំ UI / UX ស្អាតបាត និង /help
+# UI / UX និង Menu Start
 # ==========================================
 async def setup_commands(application: Application):
     commands = [
@@ -337,7 +331,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     
     if update.callback_query:
         await update.callback_query.answer()
-        await update.callback_query.message.delete()
+        try: await update.callback_query.message.delete()
+        except Exception: pass
         await context.bot.send_photo(chat_id=update.effective_chat.id, photo=LOGO_URL, caption=text, parse_mode='Markdown', reply_markup=reply_markup)
     else:
         await update.message.reply_photo(photo=LOGO_URL, caption=text, parse_mode='Markdown', reply_markup=reply_markup)
@@ -363,16 +358,16 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 • បកប្រែអត្ថបទ (អង់គ្លេស មក ខ្មែរ) ស្វ័យប្រវត្តិ 
 • បំប្លែងអត្ថបទទៅជាសំឡេង (Audio Narration) 🎙️
 
-⚠️ **កំណត់សម្គាល់៖** ឯកសារត្រូវមានទំហំមិនលើសពី **50MB** ឡើយ។ វាយបញ្ជា `/cancel` ដើម្បីបោះបង់សកម្មភាពពេលកំពុងរង់ចាំ។
+⚠️ **កំណត់សម្គាល់៖** ឯកសារត្រូវមានទំហំមិនលើសពី **50MB** ឡើយ។ វាយបញ្ជា `/cancel` ដើម្បីបោះបង់សកម្មភាព។
     """
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
 # ==========================================
-# Handlers មុខងារថ្មីទាំង ៣
+# Handlers សម្រាប់ចាប់ផ្ដើមមុខងារនីមួយៗ
 # ==========================================
 async def start_tts(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
-    await query.edit_message_text("✅ សូមវាយ ឬ Copy អត្ថបទ (ភាសាខ្មែរ) បញ្ចូលមកទីនេះ ខ្ញុំនឹងអានវាជាសំឡេងជូនអ្នក។")
+    await query.edit_message_text("✅ សូមវាយ ឬ Copy អត្ថបទ បันចូលមកទីនេះ ខ្ញុំនឹងអានវាជាសំឡេងជូនអ្នក។")
     return WAITING_FOR_TTS
 
 async def receive_tts_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -383,7 +378,7 @@ async def receive_tts_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 async def start_translate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
-    await query.edit_message_text("✅ សូមវាយ ឬ Copy អត្ថបទភាសាអង់គ្លេស បញ្ចូលមកទីនេះ ដើម្បីបកប្រែមកជាភាសាខ្មែរ។")
+    await query.edit_message_text("✅ សូមវាយ ឬ Copy អត្ថបទ បញ្ចូលមកទីនេះ ដើម្បីបកប្រែមកជាភាសាខ្មែរ។")
     return WAITING_FOR_TRANSLATE
 
 async def receive_translate_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -394,7 +389,7 @@ async def receive_translate_text(update: Update, context: ContextTypes.DEFAULT_T
 
 async def start_remove_bg(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
-    await query.edit_message_text("✅ សូមផ្ញើរូបភាព (Photo) មួយមកឱ្យខ្ញុំ ខ្ញុំនឹងកាត់យកតែរូបភាព និងលុបផ្ទៃខាងក្រោយចោល។")
+    await query.edit_message_text("✅ សូមផ្ញើរូបភាពមួយមកឱ្យខ្ញុំ ខ្ញុំនឹងកាត់យកតែរូបភាព និងលុបផ្ទៃខាងក្រោយចោល។")
     return WAITING_FOR_REMOVE_BG
 
 async def receive_remove_bg_image(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -409,9 +404,6 @@ async def receive_remove_bg_image(update: Update, context: ContextTypes.DEFAULT_
     asyncio.create_task(remove_bg_task(update.effective_chat.id, file_path, msg, context))
     return ConversationHandler.END
 
-# ==========================================
-# Handlers មុខងារចាស់ៗ
-# ==========================================
 async def start_pdf_to_word(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
     await query.edit_message_text("✅ សូមផ្ញើឯកសារ PDF មួយដែលអ្នកចង់បំប្លែងទៅជា Word (DOCX)។")
@@ -439,8 +431,8 @@ async def receive_media_url(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 async def start_pdf_to_img(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
-    keyboard = [[InlineKeyboardButton("➡️ បំប្លែងទៅជា JPG", callback_data='fmt_jpeg')],
-                [InlineKeyboardButton("➡️ បំប្លែងទៅជា PNG", callback_data='fmt_png')],
+    keyboard = [[InlineKeyboardButton("➡️ JPG", callback_data='fmt_jpeg'),
+                 InlineKeyboardButton("➡️ PNG", callback_data='fmt_png')],
                 [InlineKeyboardButton("⬅️ ត្រឡប់ក្រោយ", callback_data='main_menu')]]
     await query.edit_message_text(text="សូមជ្រើសរើសប្រភេទរូបភាព៖", reply_markup=InlineKeyboardMarkup(keyboard))
     return SELECT_ACTION
@@ -480,6 +472,7 @@ async def receive_pdf_for_merge(update, context):
 
 async def done_merging(update, context):
     if 'merge_files' not in context.user_data or len(context.user_data['merge_files']) < 2:
+        await update.message.reply_text("សូមផ្ញើឯកសារ PDF យ៉ាងហោចណាស់ ២ មុននឹងវាយ /done ។")
         return WAITING_FOR_MERGE
     msg = await update.message.reply_text("យល់ព្រម! កំពុងបញ្ចូលឯកសារ...")
     asyncio.create_task(merge_pdf_task(update.effective_chat.id, context.user_data['merge_files'], msg, context))
@@ -540,6 +533,7 @@ async def receive_img_for_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 async def done_img_to_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if 'img_to_pdf_files' not in context.user_data or len(context.user_data['img_to_pdf_files']) < 1:
+        await update.message.reply_text("សូមផ្ញើរូបភាពយ៉ាងហោចណាស់ ១ មុននឹងវាយ /done ។")
         return WAITING_FOR_IMG_TO_PDF
     msg = await update.message.reply_text("យល់ព្រម! កំពុងបំប្លែងរូបភាពទៅជា PDF...")
     asyncio.create_task(img_to_pdf_task(update.effective_chat.id, context.user_data['img_to_pdf_files'], msg, context))
@@ -568,7 +562,7 @@ def create_format_buttons(formats, prefix, columns=3):
 
 async def start_audio_converter(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
-    audio_formats = ['AAC', 'AIFF', 'FLAC', 'M4A', 'MP3', 'OGG', 'WAV']
+    audio_formats = ['AAC', 'FLAC', 'M4A', 'MP3', 'OGG', 'WAV']
     await query.edit_message_text(text="សូមជ្រើសរើសទ្រង់ទ្រាយសម្លេង៖", reply_markup=InlineKeyboardMarkup(create_format_buttons(audio_formats, "audio")))
     return SELECT_ACTION
 
@@ -579,7 +573,10 @@ async def select_audio_output(update: Update, context: ContextTypes.DEFAULT_TYPE
     return WAITING_FOR_AUDIO_FILE
 
 async def receive_audio_for_conversion(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    file_obj = update.message.audio or update.message.document
+    file_obj = update.message.audio or update.message.voice or update.message.document
+    if not file_obj:
+        await update.message.reply_text("សូមផ្ញើឯកសារសម្លេងត្រឹមត្រូវ។")
+        return WAITING_FOR_AUDIO_FILE
     file = await file_obj.get_file()
     file_path = f"temp_{file.file_id}"
     await file.download_to_drive(file_path)
@@ -590,7 +587,7 @@ async def receive_audio_for_conversion(update: Update, context: ContextTypes.DEF
 
 async def start_video_converter(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
-    video_formats = ['AVI', 'FLV', 'MKV', 'MOV', 'MP4', 'WEBM']
+    video_formats = ['AVI', 'MKV', 'MOV', 'MP4', 'WEBM']
     await query.edit_message_text(text="សូមជ្រើសរើសទ្រង់ទ្រាយវីដេអូ៖", reply_markup=InlineKeyboardMarkup(create_format_buttons(video_formats, "video")))
     return SELECT_ACTION
 
@@ -601,7 +598,10 @@ async def select_video_output(update: Update, context: ContextTypes.DEFAULT_TYPE
     return WAITING_FOR_VIDEO_FILE
 
 async def receive_video_for_conversion(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    file_obj = update.message.video or update.message.document
+    file_obj = update.message.video or update.message.video_note or update.message.document
+    if not file_obj:
+        await update.message.reply_text("សូមផ្ញើឯកសារវីដេអូត្រឹមត្រូវ។")
+        return WAITING_FOR_VIDEO_FILE
     file = await file_obj.get_file()
     file_path = f"temp_{file.file_id}"
     await file.download_to_drive(file_path)
@@ -628,6 +628,9 @@ async def start_create_zip(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 async def receive_file_for_zip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     doc = update.message.document
+    if not doc:
+        await update.message.reply_text("សូមផ្ញើជាឯកសារ (Document)។")
+        return WAITING_FOR_FILES_TO_ZIP
     file = await doc.get_file()
     file_path = f"temp_{file.file_unique_id}_{doc.file_name}"
     await file.download_to_drive(file_path)
@@ -637,7 +640,9 @@ async def receive_file_for_zip(update: Update, context: ContextTypes.DEFAULT_TYP
     return WAITING_FOR_FILES_TO_ZIP
 
 async def done_zipping(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if 'zip_files' not in context.user_data or not context.user_data['zip_files']: return WAITING_FOR_FILES_TO_ZIP
+    if 'zip_files' not in context.user_data or not context.user_data['zip_files']:
+        await update.message.reply_text("សូមផ្ញើឯកសារយ៉ាងហោចណាស់ ១ មុននឹងវាយ /done ។")
+        return WAITING_FOR_FILES_TO_ZIP
     msg = await update.message.reply_text("យល់ព្រម! កំពុងបង្កើតឯកសារ ZIP...")
     asyncio.create_task(create_zip_task(update.effective_chat.id, context.user_data['zip_files'], msg, context))
     context.user_data.clear()
@@ -645,11 +650,14 @@ async def done_zipping(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def start_extract_archive(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
-    await query.edit_message_text("✅ សូមផ្ញើឯកសារ Archive (ZIP ឬ TAR.GZ) ដែលអ្នកចង់ពន្លា។")
+    await query.edit_message_text("✅ សូមផ្ញើឯកសារ Archive (ZIP, TAR) ដែលអ្នកចង់ពន្លា។")
     return WAITING_FOR_ARCHIVE_TO_EXTRACT
 
 async def receive_archive_to_extract(update: Update, context: ContextTypes.DEFAULT_TYPE):
     doc = update.message.document
+    if not doc:
+        await update.message.reply_text("សូមផ្ញើជាឯកសារ Archive ។")
+        return WAITING_FOR_ARCHIVE_TO_EXTRACT
     file = await doc.get_file()
     file_path = f"temp_{file.file_unique_id}_{doc.file_name}"
     await file.download_to_drive(file_path)
@@ -661,8 +669,9 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data.clear()
     if update.callback_query:
         await update.callback_query.answer()
-        await update.callback_query.message.delete()
-        await update.callback_query.message.reply_text("ប្រតិបត្តិការត្រូវបានបោះបង់។ វាយ /start ដើម្បីចាប់ផ្តើមថ្មី។")
+        try: await update.callback_query.message.delete()
+        except Exception: pass
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="ប្រតិបត្តិការត្រូវបានបោះបង់។ វាយ /start ដើម្បីចាប់ផ្តើមថ្មី។")
     else:
         await update.message.reply_text("ប្រតិបត្តិការត្រូវបានបោះបង់។ វាយ /start ដើម្បីចាប់ផ្តើមថ្មី។")
     return ConversationHandler.END
@@ -695,8 +704,6 @@ def main() -> None:
                 CallbackQueryHandler(start_extract_archive, pattern='^archive_extract$'),
                 CallbackQueryHandler(start_pdf_to_word, pattern='^pdf_to_word$'),
                 CallbackQueryHandler(start_media_downloader, pattern='^media_downloader$'),
-                
-                # Handlers សម្រាប់ប៊ូតុងថ្មី
                 CallbackQueryHandler(start_tts, pattern='^text_to_speech$'),
                 CallbackQueryHandler(start_translate, pattern='^translate_text$'),
                 CallbackQueryHandler(start_remove_bg, pattern='^remove_bg$'),
@@ -709,17 +716,15 @@ def main() -> None:
             WAITING_FOR_COMPRESS: [MessageHandler(filters.Document.PDF, receive_pdf_for_compress)],
             WAITING_FOR_IMG_TO_PDF: [MessageHandler(filters.PHOTO | filters.Document.IMAGE, receive_img_for_pdf), CommandHandler('done', done_img_to_pdf)],
             WAITING_FOR_IMG_TO_TEXT_FILE: [MessageHandler(filters.PHOTO | filters.Document.IMAGE, receive_img_for_text)],
-            WAITING_FOR_AUDIO_FILE: [MessageHandler(filters.AUDIO | filters.Document.ALL, receive_audio_for_conversion)],
-            WAITING_FOR_VIDEO_FILE: [MessageHandler(filters.VIDEO | filters.Document.ALL, receive_video_for_conversion)],
+            WAITING_FOR_AUDIO_FILE: [MessageHandler(filters.AUDIO | filters.VOICE | filters.Document.ALL, receive_audio_for_conversion)],
+            WAITING_FOR_VIDEO_FILE: [MessageHandler(filters.VIDEO | filters.VIDEO_NOTE | filters.Document.ALL, receive_video_for_conversion)],
             WAITING_FOR_FILES_TO_ZIP: [MessageHandler(filters.Document.ALL, receive_file_for_zip), CommandHandler('done', done_zipping)],
             WAITING_FOR_ARCHIVE_TO_EXTRACT: [MessageHandler(filters.Document.ALL, receive_archive_to_extract)],
             WAITING_FOR_PDF_TO_WORD: [MessageHandler(filters.Document.PDF, receive_pdf_for_word)],
             WAITING_FOR_MEDIA_URL: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_media_url)],
-            
-            # Input Handlers សម្រាប់មុខងារថ្មី
             WAITING_FOR_TTS: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_tts_text)],
             WAITING_FOR_TRANSLATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_translate_text)],
-            WAITING_FOR_REMOVE_BG: [MessageHandler(filters.PHOTO | filters.Document.IMAGE, receive_remove_bg_image)],
+            WAITING_FOR_REMOVE_BG: [MessageHandler(filters.PHOTO | filters.Document.IMAGE, receive_រូបថត | filters.Document.ALL), receive_remove_bg_image] if 'filters.Document.ALL' else [MessageHandler(filters.PHOTO | filters.Document.IMAGE, receive_remove_bg_image)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
         allow_reentry=True
