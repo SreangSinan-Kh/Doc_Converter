@@ -68,6 +68,9 @@ def warmup_services():
         from rembg import remove 
         _ = urllib.parse.quote("warmup") 
         logging.info(">>> កម្តៅម៉ាស៊ីនរួចរាល់! លឿនដូចហោះ!")
+    except SystemExit:
+        # ខែលការពារកម្រិតខ្ពស់៖ ការពារមិនឱ្យ rembg សម្លាប់ Bot ពេលរកឯកសារមិនឃើញ
+        logging.error("!!! រកមិនឃើញកញ្ចប់ rembg[cpu] ទេ។ សូមពិនិត្យ requirements.txt ម្តងទៀត។ (តែមុខងារផ្សេងៗនៅដំណើរការធម្មតា)")
     except Exception as e:
         logging.error(f"Warm-up Error: {e}")
 
@@ -118,7 +121,7 @@ async def remove_bg_task(chat_id, file_path, msg, context):
         await context.bot.edit_message_text("លុបផ្ទៃខាងក្រោយជោគជ័យ! កំពុងផ្ញើ... ✅", chat_id=chat_id, message_id=msg.message_id)
         await context.bot.send_document(chat_id=chat_id, document=open(out_file, 'rb'), filename="Removed_Background.png")
     except Exception as e:
-        await context.bot.edit_message_text(f"កំហុសការលុបផ្ទៃខាងក្រោយ: {str(e)[:100]}", chat_id=chat_id, message_id=msg.message_id)
+        await context.bot.edit_message_text(f"កំហុសការលុបផ្ទៃខាងក្រោយ: {str(e)[:100]}\n(សូមប្រាកដថាបានដាក់ rembg[cpu] ក្នុង requirements.txt)", chat_id=chat_id, message_id=msg.message_id)
     finally:
         if os.path.exists(file_path): os.remove(file_path)
         if os.path.exists(out_file): os.remove(out_file)
@@ -398,7 +401,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
 # ==========================================
-# Handlers 
+# Handlers (មានបំពាក់ប្រព័ន្ធការពារ Duplicate)
 # ==========================================
 async def start_tts(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
@@ -495,7 +498,7 @@ async def start_conversion_with_format(update: Update, context: ContextTypes.DEF
     await query.answer()
     try: await query.message.delete()
     except Exception: pass
-    await context.bot.send_message(chat_id=update.effective_chat.id, text=f"✅ បានជ្រើសរើស {context.user_data['format'].upper()}។ សូមផ្ញើឯកសារ PDF។")
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=f"✅ បានជ្រើសរើស {context.user_data['format'].upper()}។ សូមផ្ញើឯកសារ PDF មួយមកឱ្យខ្ញុំ។")
     return WAITING_PDF_TO_IMG_FILE
 
 async def receive_pdf_for_img(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -530,7 +533,7 @@ async def receive_pdf_for_merge(update, context):
 async def done_merging(update, context):
     if is_duplicate(update): return ConversationHandler.END
     if 'merge_files' not in context.user_data or len(context.user_data['merge_files']) < 2:
-        await update.message.reply_text("សូមផ្ញើ PDF យ៉ាងហោចណាស់ ២។")
+        await update.message.reply_text("សូមផ្ញើឯកសារ PDF យ៉ាងហោចណាស់ ២ មុននឹងវាយ /done ។")
         return WAITING_FOR_MERGE
     msg = await update.message.reply_text("យល់ព្រម! កំពុងបញ្ចូលឯកសារ...")
     await merge_pdf_task(update.effective_chat.id, context.user_data['merge_files'], msg, context)
@@ -600,7 +603,7 @@ async def receive_img_for_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def done_img_to_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if is_duplicate(update): return ConversationHandler.END
     if 'img_to_pdf_files' not in context.user_data or len(context.user_data['img_to_pdf_files']) < 1:
-        await update.message.reply_text("សូមផ្ញើរូបភាពយ៉ាងហោចណាស់ ១។")
+        await update.message.reply_text("សូមផ្ញើរូបភាពយ៉ាងហោចណាស់ ១ មុននឹងវាយ /done ។")
         return WAITING_FOR_IMG_TO_PDF
     msg = await update.message.reply_text("យល់ព្រម! កំពុងបំប្លែងរូបភាពទៅជា PDF...")
     await img_to_pdf_task(update.effective_chat.id, context.user_data['img_to_pdf_files'], msg, context)
@@ -649,7 +652,9 @@ async def select_audio_output(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def receive_audio_for_conversion(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if is_duplicate(update): return ConversationHandler.END
     file_obj = update.message.audio or update.message.voice or update.message.document
-    if not file_obj: return WAITING_FOR_AUDIO_FILE
+    if not file_obj:
+        await update.message.reply_text("សូមផ្ញើឯកសារសម្លេងត្រឹមត្រូវ។")
+        return WAITING_FOR_AUDIO_FILE
     file = await file_obj.get_file()
     file_path = f"temp_{file.file_id}"
     await file.download_to_drive(file_path)
@@ -677,7 +682,9 @@ async def select_video_output(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def receive_video_for_conversion(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if is_duplicate(update): return ConversationHandler.END
     file_obj = update.message.video or update.message.video_note or update.message.document
-    if not file_obj: return WAITING_FOR_VIDEO_FILE
+    if not file_obj:
+        await update.message.reply_text("សូមផ្ញើឯកសារវីដេអូត្រឹមត្រូវ។")
+        return WAITING_FOR_VIDEO_FILE
     file = await file_obj.get_file()
     file_path = f"temp_{file.file_id}"
     await file.download_to_drive(file_path)
@@ -708,7 +715,9 @@ async def start_create_zip(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 async def receive_file_for_zip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     doc = update.message.document
-    if not doc: return WAITING_FOR_FILES_TO_ZIP
+    if not doc:
+        await update.message.reply_text("សូមផ្ញើជាឯកសារ (Document)។")
+        return WAITING_FOR_FILES_TO_ZIP
     file = await doc.get_file()
     file_path = f"temp_{file.file_unique_id}_{doc.file_name}"
     await file.download_to_drive(file_path)
@@ -720,6 +729,7 @@ async def receive_file_for_zip(update: Update, context: ContextTypes.DEFAULT_TYP
 async def done_zipping(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_duplicate(update): return ConversationHandler.END
     if 'zip_files' not in context.user_data or not context.user_data['zip_files']:
+        await update.message.reply_text("សូមផ្ញើឯកសារយ៉ាងហោចណាស់ ១ មុននឹងវាយ /done ។")
         return WAITING_FOR_FILES_TO_ZIP
     msg = await update.message.reply_text("យល់ព្រម! កំពុងបង្កើតឯកសារ ZIP...")
     await create_zip_task(update.effective_chat.id, context.user_data['zip_files'], msg, context)
@@ -736,7 +746,9 @@ async def start_extract_archive(update: Update, context: ContextTypes.DEFAULT_TY
 async def receive_archive_to_extract(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_duplicate(update): return ConversationHandler.END
     doc = update.message.document
-    if not doc: return WAITING_FOR_ARCHIVE_TO_EXTRACT
+    if not doc:
+        await update.message.reply_text("សូមផ្ញើជាឯកសារ Archive ។")
+        return WAITING_FOR_ARCHIVE_TO_EXTRACT
     file = await doc.get_file()
     file_path = f"temp_{file.file_unique_id}_{doc.file_name}"
     await file.download_to_drive(file_path)
