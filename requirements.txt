@@ -6,3 +6,6 @@ pdf2image
 ffmpeg-python
 yt-dlp
 pdf2docx
+gTTS
+deep-translator
+rembg
