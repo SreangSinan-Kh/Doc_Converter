@@ -17,14 +17,12 @@ from PIL import Image
 import pytesseract
 from typing import Final
 
-# នាំចូល Library មូលដ្ឋាន
 try:
     from PyPDF2 import PdfReader, PdfWriter, PdfMerger
     from pdf2image import convert_from_path
     from pdf2docx import Converter
     import yt_dlp
     from gtts import gTTS
-    # នាំចូលទាំង Google និង MyMemory Translator សម្រាប់ប្រព័ន្ធបម្រុង
     from deep_translator import GoogleTranslator, MyMemoryTranslator
 except ImportError:
     print("!!! កំហុស៖ សូមប្រាកដថាបានតម្លើង Library ទាំងអស់")
@@ -35,19 +33,32 @@ MAX_FILE_SIZE: Final = 50 * 1024 * 1024 # 50 MB
 WEBHOOK_URL: Final = os.environ.get("CLOUD_RUN_URL", "") 
 PORT: Final = int(os.environ.get("PORT", "8080")) 
 
-(SELECT_ACTION,
- WAITING_PDF_TO_IMG_FORMAT, WAITING_PDF_TO_IMG_FILE,
+(SELECT_ACTION, WAITING_PDF_TO_IMG_FORMAT, WAITING_PDF_TO_IMG_FILE,
  WAITING_FOR_MERGE, WAITING_FOR_SPLIT_FILE, WAITING_FOR_SPLIT_RANGE,
- WAITING_FOR_COMPRESS, WAITING_FOR_PDF_TO_WORD,
- WAITING_FOR_IMG_TO_PDF, WAITING_FOR_IMG_TO_TEXT_FILE,
- SELECT_AUDIO_OUTPUT_FORMAT, WAITING_FOR_AUDIO_FILE,
- SELECT_VIDEO_OUTPUT_FORMAT, WAITING_FOR_VIDEO_FILE,
- SELECT_ARCHIVE_ACTION, WAITING_FOR_FILES_TO_ZIP, WAITING_FOR_ARCHIVE_TO_EXTRACT,
- WAITING_FOR_MEDIA_URL,
- WAITING_FOR_TTS, WAITING_FOR_TRANSLATE, WAITING_FOR_REMOVE_BG
-) = range(21)
+ WAITING_FOR_COMPRESS, WAITING_FOR_PDF_TO_WORD, WAITING_FOR_IMG_TO_PDF,
+ WAITING_FOR_IMG_TO_TEXT_FILE, SELECT_AUDIO_OUTPUT_FORMAT, WAITING_FOR_AUDIO_FILE,
+ SELECT_VIDEO_OUTPUT_FORMAT, WAITING_FOR_VIDEO_FILE, SELECT_ARCHIVE_ACTION,
+ WAITING_FOR_FILES_TO_ZIP, WAITING_FOR_ARCHIVE_TO_EXTRACT, WAITING_FOR_MEDIA_URL,
+ WAITING_FOR_TTS, WAITING_FOR_TRANSLATE, WAITING_FOR_REMOVE_BG) = range(21)
 
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
+
+# ==========================================
+# ប្រព័ន្ធខែលការពារ Telegram Timeout (Anti-Duplicate)
+# ==========================================
+PROCESSED_UPDATES = set()
+
+def is_duplicate(update: Update) -> bool:
+    """ឆែកមើលថាតើសំណើនេះ Telegram ធ្លាប់បញ្ជូនមកហើយឬនៅ (ពេលវា Timeout)"""
+    if not update: return False
+    update_id = update.update_id
+    if update_id in PROCESSED_UPDATES:
+        return True # ធ្លាប់ទទួលហើយ ច្រានចោល
+    PROCESSED_UPDATES.add(update_id)
+    # លុបអង្គចងចាំចោលខ្លះ បើវាច្រើនពេក (ការពារកុំឱ្យស៊ី RAM)
+    if len(PROCESSED_UPDATES) > 1000:
+        PROCESSED_UPDATES.clear()
+    return False
 
 # ==========================================
 # អនុគមន៍បំពេញការងារ (Background Tasks)
@@ -67,22 +78,17 @@ async def text_to_speech_task(chat_id, text, msg, context):
     finally:
         if os.path.exists(out_file): os.remove(out_file)
 
-# ---> នេះគឺជាកន្លែងដែលយើងបានកែប្រែប្រព័ន្ធបម្រុងពេលបកប្រែ <---
 async def translate_text_task(chat_id, text, msg, context):
     try:
         await context.bot.edit_message_text("កំពុងបកប្រែអត្ថបទ... 🔄", chat_id=chat_id, message_id=msg.message_id)
-        
         try:
-            # ជម្រើសទី ១៖ សាកល្បងប្រើ Google Translate មុន
             translated = await asyncio.to_thread(GoogleTranslator(source='auto', target='km').translate, text)
         except Exception:
-            # ជម្រើសទី ២៖ បើ Google Block, វានឹងលោតមកប្រើ MyMemory ដោយស្វ័យប្រវត្តិ
             translated = await asyncio.to_thread(MyMemoryTranslator(source='en', target='km').translate, text)
-            
         await context.bot.edit_message_text("បកប្រែជោគជ័យ! ✅", chat_id=chat_id, message_id=msg.message_id)
         await context.bot.send_message(chat_id=chat_id, text=f"**អត្ថបទបកប្រែជាភាសាខ្មែរ៖**\n\n{translated}", parse_mode='Markdown')
     except Exception as e:
-        await context.bot.edit_message_text(f"សុំទោស! ប្រព័ន្ធបកប្រែទាំង២ត្រូវបានរាំងខ្ទប់។\nកំហុស: {str(e)[:100]}", chat_id=chat_id, message_id=msg.message_id)
+        await context.bot.edit_message_text(f"សុំទោស! ប្រព័ន្ធបកប្រែមានបញ្ហា។\nកំហុស: {str(e)[:100]}", chat_id=chat_id, message_id=msg.message_id)
 
 async def remove_bg_task(chat_id, file_path, msg, context):
     out_file = f"nobg_{chat_id}.png"
@@ -367,7 +373,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
 # ==========================================
-# Handlers សម្រាប់ចាប់ផ្ដើមមុខងារនីមួយៗ
+# Handlers (មានបំពាក់ប្រព័ន្ធការពារ Duplicate)
 # ==========================================
 async def start_tts(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
@@ -377,9 +383,10 @@ async def start_tts(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return WAITING_FOR_TTS
 
 async def receive_tts_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if is_duplicate(update): return ConversationHandler.END # ការពារជាន់គ្នា
     text = update.message.text
     msg = await update.message.reply_text("✅ ទទួលបានអត្ថបទ! កំពុងរៀបចំ...")
-    asyncio.create_task(text_to_speech_task(update.effective_chat.id, text, msg, context))
+    await text_to_speech_task(update.effective_chat.id, text, msg, context)
     return ConversationHandler.END
 
 async def start_translate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -390,9 +397,10 @@ async def start_translate(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     return WAITING_FOR_TRANSLATE
 
 async def receive_translate_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if is_duplicate(update): return ConversationHandler.END # ការពារជាន់គ្នា
     text = update.message.text
     msg = await update.message.reply_text("✅ ទទួលបានអត្ថបទ! កំពុងរៀបចំ...")
-    asyncio.create_task(translate_text_task(update.effective_chat.id, text, msg, context))
+    await translate_text_task(update.effective_chat.id, text, msg, context)
     return ConversationHandler.END
 
 async def start_remove_bg(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -403,6 +411,7 @@ async def start_remove_bg(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     return WAITING_FOR_REMOVE_BG
 
 async def receive_remove_bg_image(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if is_duplicate(update): return ConversationHandler.END # ការពារជាន់គ្នា
     file_obj = update.message.photo[-1] if update.message.photo else update.message.document
     if not file_obj:
         await update.message.reply_text("សូមផ្ញើរូបភាពជា File ឬ Photo។")
@@ -411,7 +420,7 @@ async def receive_remove_bg_image(update: Update, context: ContextTypes.DEFAULT_
     file_path = f"temp_{file.file_id}.jpg"
     await file.download_to_drive(file_path)
     msg = await update.message.reply_text("✅ ទទួលបានរូបភាព! កំពុងរៀបចំ...")
-    asyncio.create_task(remove_bg_task(update.effective_chat.id, file_path, msg, context))
+    await remove_bg_task(update.effective_chat.id, file_path, msg, context)
     return ConversationHandler.END
 
 async def start_pdf_to_word(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -422,12 +431,13 @@ async def start_pdf_to_word(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     return WAITING_FOR_PDF_TO_WORD
 
 async def receive_pdf_for_word(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if is_duplicate(update): return ConversationHandler.END # ការពារជាន់គ្នា
     doc = update.message.document
     file = await doc.get_file()
     file_path = f"temp_{file.file_id}.pdf"
     await file.download_to_drive(file_path)
     msg = await update.message.reply_text("✅ ទទួលបានឯកសារ! កំពុងបំប្លែងទៅជា Word...")
-    asyncio.create_task(pdf_to_word_task(update.effective_chat.id, file_path, msg, context))
+    await pdf_to_word_task(update.effective_chat.id, file_path, msg, context)
     return ConversationHandler.END
 
 async def start_media_downloader(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -438,9 +448,10 @@ async def start_media_downloader(update: Update, context: ContextTypes.DEFAULT_T
     return WAITING_FOR_MEDIA_URL
 
 async def receive_media_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if is_duplicate(update): return ConversationHandler.END # ការពារជាន់គ្នា
     url = update.message.text
     msg = await update.message.reply_text("✅ ទទួលបានតំណភ្ជាប់! កំពុងដំណើរការ...")
-    asyncio.create_task(download_media_task(update.effective_chat.id, url, msg, context))
+    await download_media_task(update.effective_chat.id, url, msg, context)
     return ConversationHandler.END
 
 async def start_pdf_to_img(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -463,13 +474,14 @@ async def start_conversion_with_format(update: Update, context: ContextTypes.DEF
     return WAITING_PDF_TO_IMG_FILE
 
 async def receive_pdf_for_img(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if is_duplicate(update): return ConversationHandler.END # ការពារជាន់គ្នា
     doc = update.message.document
     file = await doc.get_file()
     file_path = f"temp_{file.file_id}.pdf"
     await file.download_to_drive(file_path)
     fmt = context.user_data.get('format', 'jpeg')
     msg = await update.message.reply_text("✅ ទទួលបានឯកសារ! កំពុងបំប្លែង...")
-    asyncio.create_task(pdf_to_img_task(update.effective_chat.id, file_path, msg, context, fmt))
+    await pdf_to_img_task(update.effective_chat.id, file_path, msg, context, fmt)
     return ConversationHandler.END
 
 async def start_merge(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -491,11 +503,12 @@ async def receive_pdf_for_merge(update, context):
     return WAITING_FOR_MERGE
 
 async def done_merging(update, context):
+    if is_duplicate(update): return ConversationHandler.END # ការពារជាន់គ្នា
     if 'merge_files' not in context.user_data or len(context.user_data['merge_files']) < 2:
         await update.message.reply_text("សូមផ្ញើឯកសារ PDF យ៉ាងហោចណាស់ ២ មុននឹងវាយ /done ។")
         return WAITING_FOR_MERGE
     msg = await update.message.reply_text("យល់ព្រម! កំពុងបញ្ចូលឯកសារ...")
-    asyncio.create_task(merge_pdf_task(update.effective_chat.id, context.user_data['merge_files'], msg, context))
+    await merge_pdf_task(update.effective_chat.id, context.user_data['merge_files'], msg, context)
     context.user_data.clear()
     return ConversationHandler.END
 
@@ -516,10 +529,11 @@ async def receive_pdf_for_split(update, context):
     return WAITING_FOR_SPLIT_RANGE
 
 async def receive_split_range(update, context):
+    if is_duplicate(update): return ConversationHandler.END # ការពារជាន់គ្នា
     page_range = update.message.text
     file_path = context.user_data.get('split_file_path')
     msg = await update.message.reply_text("យល់ព្រម! កំពុងបំបែកឯកសារ...")
-    asyncio.create_task(split_pdf_task(update.effective_chat.id, file_path, page_range, msg, context))
+    await split_pdf_task(update.effective_chat.id, file_path, page_range, msg, context)
     context.user_data.clear()
     return ConversationHandler.END
 
@@ -531,12 +545,13 @@ async def start_compress(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     return WAITING_FOR_COMPRESS
 
 async def receive_pdf_for_compress(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if is_duplicate(update): return ConversationHandler.END # ការពារជាន់គ្នា
     doc = update.message.document
     file = await doc.get_file()
     file_path = f"temp_{file.file_id}.pdf"
     await file.download_to_drive(file_path)
     msg = await update.message.reply_text("✅ ទទួលបានឯកសារ! កំពុងបន្ថយទំហំ...")
-    asyncio.create_task(compress_pdf_task(update.effective_chat.id, file_path, msg, context))
+    await compress_pdf_task(update.effective_chat.id, file_path, msg, context)
     return ConversationHandler.END
 
 async def start_img_to_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -558,11 +573,12 @@ async def receive_img_for_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE
     return WAITING_FOR_IMG_TO_PDF
 
 async def done_img_to_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if is_duplicate(update): return ConversationHandler.END # ការពារជាន់គ្នា
     if 'img_to_pdf_files' not in context.user_data or len(context.user_data['img_to_pdf_files']) < 1:
         await update.message.reply_text("សូមផ្ញើរូបភាពយ៉ាងហោចណាស់ ១ មុននឹងវាយ /done ។")
         return WAITING_FOR_IMG_TO_PDF
     msg = await update.message.reply_text("យល់ព្រម! កំពុងបំប្លែងរូបភាពទៅជា PDF...")
-    asyncio.create_task(img_to_pdf_task(update.effective_chat.id, context.user_data['img_to_pdf_files'], msg, context))
+    await img_to_pdf_task(update.effective_chat.id, context.user_data['img_to_pdf_files'], msg, context)
     context.user_data.clear()
     return ConversationHandler.END
 
@@ -574,12 +590,13 @@ async def start_img_to_text(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     return WAITING_FOR_IMG_TO_TEXT_FILE
 
 async def receive_img_for_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if is_duplicate(update): return ConversationHandler.END # ការពារជាន់គ្នា
     file_obj = update.message.photo[-1] if update.message.photo else update.message.document
     file = await file_obj.get_file()
     file_path = f"temp_{file.file_id}.jpg"
     await file.download_to_drive(file_path)
     msg = await update.message.reply_text("✅ ទទួលបានរូបភាព! កំពុងបំប្លែងទៅជាអក្សរ...")
-    asyncio.create_task(img_to_text_task(update.effective_chat.id, file_path, msg, context))
+    await img_to_text_task(update.effective_chat.id, file_path, msg, context)
     return ConversationHandler.END
 
 def create_format_buttons(formats, prefix, columns=3):
@@ -605,6 +622,7 @@ async def select_audio_output(update: Update, context: ContextTypes.DEFAULT_TYPE
     return WAITING_FOR_AUDIO_FILE
 
 async def receive_audio_for_conversion(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if is_duplicate(update): return ConversationHandler.END # ការពារជាន់គ្នា
     file_obj = update.message.audio or update.message.voice or update.message.document
     if not file_obj:
         await update.message.reply_text("សូមផ្ញើឯកសារសម្លេងត្រឹមត្រូវ។")
@@ -614,7 +632,7 @@ async def receive_audio_for_conversion(update: Update, context: ContextTypes.DEF
     await file.download_to_drive(file_path)
     output_format = context.user_data.get('output_format', 'mp3')
     msg = await update.message.reply_text("✅ ទទួលបានឯកសារ! កំពុងបំប្លែង...")
-    asyncio.create_task(media_conversion_task(update.effective_chat.id, file_path, output_format, msg, context, media_type='audio'))
+    await media_conversion_task(update.effective_chat.id, file_path, output_format, msg, context, media_type='audio')
     return ConversationHandler.END
 
 async def start_video_converter(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -634,6 +652,7 @@ async def select_video_output(update: Update, context: ContextTypes.DEFAULT_TYPE
     return WAITING_FOR_VIDEO_FILE
 
 async def receive_video_for_conversion(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if is_duplicate(update): return ConversationHandler.END # ការពារជាន់គ្នា
     file_obj = update.message.video or update.message.video_note or update.message.document
     if not file_obj:
         await update.message.reply_text("សូមផ្ញើឯកសារវីដេអូត្រឹមត្រូវ។")
@@ -643,7 +662,7 @@ async def receive_video_for_conversion(update: Update, context: ContextTypes.DEF
     await file.download_to_drive(file_path)
     output_format = context.user_data.get('output_format', 'mp4')
     msg = await update.message.reply_text("✅ ទទួលបានវីដេអូ! កំពុងបំប្លែង...")
-    asyncio.create_task(media_conversion_task(update.effective_chat.id, file_path, output_format, msg, context, media_type='video'))
+    await media_conversion_task(update.effective_chat.id, file_path, output_format, msg, context, media_type='video')
     return ConversationHandler.END
 
 async def start_archive_manager(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -680,11 +699,12 @@ async def receive_file_for_zip(update: Update, context: ContextTypes.DEFAULT_TYP
     return WAITING_FOR_FILES_TO_ZIP
 
 async def done_zipping(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if is_duplicate(update): return ConversationHandler.END # ការពារជាន់គ្នា
     if 'zip_files' not in context.user_data or not context.user_data['zip_files']:
         await update.message.reply_text("សូមផ្ញើឯកសារយ៉ាងហោចណាស់ ១ មុននឹងវាយ /done ។")
         return WAITING_FOR_FILES_TO_ZIP
     msg = await update.message.reply_text("យល់ព្រម! កំពុងបង្កើតឯកសារ ZIP...")
-    asyncio.create_task(create_zip_task(update.effective_chat.id, context.user_data['zip_files'], msg, context))
+    await create_zip_task(update.effective_chat.id, context.user_data['zip_files'], msg, context)
     context.user_data.clear()
     return ConversationHandler.END
 
@@ -696,6 +716,7 @@ async def start_extract_archive(update: Update, context: ContextTypes.DEFAULT_TY
     return WAITING_FOR_ARCHIVE_TO_EXTRACT
 
 async def receive_archive_to_extract(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if is_duplicate(update): return ConversationHandler.END # ការពារជាន់គ្នា
     doc = update.message.document
     if not doc:
         await update.message.reply_text("សូមផ្ញើជាឯកសារ Archive ។")
@@ -704,7 +725,7 @@ async def receive_archive_to_extract(update: Update, context: ContextTypes.DEFAU
     file_path = f"temp_{file.file_unique_id}_{doc.file_name}"
     await file.download_to_drive(file_path)
     msg = await update.message.reply_text("✅ ទទួលបានឯកសារ! កំពុងពន្លា...")
-    asyncio.create_task(extract_archive_task(update.effective_chat.id, file_path, msg, context))
+    await extract_archive_task(update.effective_chat.id, file_path, msg, context)
     return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
