@@ -24,7 +24,8 @@ try:
     from pdf2docx import Converter
     import yt_dlp
     from gtts import gTTS
-    from deep_translator import GoogleTranslator
+    # នាំចូលទាំង Google និង MyMemory Translator សម្រាប់ប្រព័ន្ធបម្រុង
+    from deep_translator import GoogleTranslator, MyMemoryTranslator
 except ImportError:
     print("!!! កំហុស៖ សូមប្រាកដថាបានតម្លើង Library ទាំងអស់")
     sys.exit(1)
@@ -34,7 +35,6 @@ MAX_FILE_SIZE: Final = 50 * 1024 * 1024 # 50 MB
 WEBHOOK_URL: Final = os.environ.get("CLOUD_RUN_URL", "") 
 PORT: Final = int(os.environ.get("PORT", "8080")) 
 
-# កំណត់ 'ស្ថានភាព' (States) ទាំងអស់
 (SELECT_ACTION,
  WAITING_PDF_TO_IMG_FORMAT, WAITING_PDF_TO_IMG_FILE,
  WAITING_FOR_MERGE, WAITING_FOR_SPLIT_FILE, WAITING_FOR_SPLIT_RANGE,
@@ -67,14 +67,22 @@ async def text_to_speech_task(chat_id, text, msg, context):
     finally:
         if os.path.exists(out_file): os.remove(out_file)
 
+# ---> នេះគឺជាកន្លែងដែលយើងបានកែប្រែប្រព័ន្ធបម្រុងពេលបកប្រែ <---
 async def translate_text_task(chat_id, text, msg, context):
     try:
         await context.bot.edit_message_text("កំពុងបកប្រែអត្ថបទ... 🔄", chat_id=chat_id, message_id=msg.message_id)
-        translated = await asyncio.to_thread(GoogleTranslator(source='auto', target='km').translate, text)
+        
+        try:
+            # ជម្រើសទី ១៖ សាកល្បងប្រើ Google Translate មុន
+            translated = await asyncio.to_thread(GoogleTranslator(source='auto', target='km').translate, text)
+        except Exception:
+            # ជម្រើសទី ២៖ បើ Google Block, វានឹងលោតមកប្រើ MyMemory ដោយស្វ័យប្រវត្តិ
+            translated = await asyncio.to_thread(MyMemoryTranslator(source='en', target='km').translate, text)
+            
         await context.bot.edit_message_text("បកប្រែជោគជ័យ! ✅", chat_id=chat_id, message_id=msg.message_id)
         await context.bot.send_message(chat_id=chat_id, text=f"**អត្ថបទបកប្រែជាភាសាខ្មែរ៖**\n\n{translated}", parse_mode='Markdown')
     except Exception as e:
-        await context.bot.edit_message_text(f"មានបញ្ហាក្នុងការបកប្រែ។\nកំហុស: {str(e)[:100]}", chat_id=chat_id, message_id=msg.message_id)
+        await context.bot.edit_message_text(f"សុំទោស! ប្រព័ន្ធបកប្រែទាំង២ត្រូវបានរាំងខ្ទប់។\nកំហុស: {str(e)[:100]}", chat_id=chat_id, message_id=msg.message_id)
 
 async def remove_bg_task(chat_id, file_path, msg, context):
     out_file = f"nobg_{chat_id}.png"
@@ -359,7 +367,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
 # ==========================================
-# Handlers សម្រាប់ចាប់ផ្ដើមមុខងារនីមួយៗ (បានជួសជុលការលុបរូបភាព)
+# Handlers សម្រាប់ចាប់ផ្ដើមមុខងារនីមួយៗ
 # ==========================================
 async def start_tts(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
