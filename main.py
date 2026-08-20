@@ -63,12 +63,9 @@ async def text_to_speech_task(chat_id, text, msg, context):
         await context.bot.edit_message_text("បង្កើតសំឡេងបានជោគជ័យ! កំពុងផ្ញើ... ✅", chat_id=chat_id, message_id=msg.message_id)
         await context.bot.send_audio(chat_id=chat_id, audio=open(out_file, 'rb'), title="Audio Narration")
     except Exception as e:
-        await context.bot.edit_message_text(f"មានបញ្ហាក្នុងการបង្កើតសំឡេង។\nកំហុស: {str(e)[:100]}", chat_id=chat_id, message_id=msg.message_id)
+        await context.bot.edit_message_text(f"មានបញ្ហាក្នុងការបង្កើតសំឡេង។\nកំហុស: {str(e)[:100]}", chat_id=chat_id, message_id=msg.message_id)
     finally:
         if os.path.exists(out_file): os.remove(out_file)
-        if msg:
-            try: await context.bot.delete_message(chat_id=chat_id, message_id=msg.message_id)
-            except Exception: pass
 
 async def translate_text_task(chat_id, text, msg, context):
     try:
@@ -306,7 +303,6 @@ async def setup_commands(application: Application):
         BotCommand("cancel", "❌ បោះបង់ប្រតិបត្តិការបច្ចុប្បន្ន")
     ]
     await application.bot.set_my_commands(commands)
-    logging.info("បានដំឡើងប៊ូតុង Menu រួចរាល់!")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     keyboard = [
@@ -363,11 +359,13 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
 # ==========================================
-# Handlers សម្រាប់ចាប់ផ្ដើមមុខងារនីមួយៗ
+# Handlers សម្រាប់ចាប់ផ្ដើមមុខងារនីមួយៗ (បានជួសជុលការលុបរូបភាព)
 # ==========================================
 async def start_tts(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
-    await query.edit_message_text("✅ សូមវាយ ឬ Copy អត្ថបទ បញ្ចូលមកទីនេះ ខ្ញុំនឹងអានវាជាសំឡេងជូនអ្នក។")
+    try: await query.message.delete() 
+    except Exception: pass
+    await context.bot.send_message(chat_id=update.effective_chat.id, text="✅ សូមវាយ ឬ Copy អត្ថបទ បញ្ចូលមកទីនេះ ខ្ញុំនឹងអានវាជាសំឡេងជូនអ្នក។")
     return WAITING_FOR_TTS
 
 async def receive_tts_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -378,7 +376,9 @@ async def receive_tts_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 async def start_translate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
-    await query.edit_message_text("✅ សូមវាយ ឬ Copy អត្ថបទ បញ្ចូលមកទីនេះ ដើម្បីបកប្រែមកជាភាសាខ្មែរ។")
+    try: await query.message.delete()
+    except Exception: pass
+    await context.bot.send_message(chat_id=update.effective_chat.id, text="✅ សូមវាយ ឬ Copy អត្ថបទ បញ្ចូលមកទីនេះ ដើម្បីបកប្រែមកជាភាសាខ្មែរ។")
     return WAITING_FOR_TRANSLATE
 
 async def receive_translate_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -389,7 +389,9 @@ async def receive_translate_text(update: Update, context: ContextTypes.DEFAULT_T
 
 async def start_remove_bg(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
-    await query.edit_message_text("✅ សូមផ្ញើរូបភាពមួយមកឱ្យខ្ញុំ ខ្ញុំនឹងកាត់យកតែរូបភាព និងលុបផ្ទៃខាងក្រោយចោល។")
+    try: await query.message.delete()
+    except Exception: pass
+    await context.bot.send_message(chat_id=update.effective_chat.id, text="✅ សូមផ្ញើរូបភាពមួយមកឱ្យខ្ញុំ ខ្ញុំនឹងកាត់យកតែរូបភាព និងលុបផ្ទៃខាងក្រោយចោល។")
     return WAITING_FOR_REMOVE_BG
 
 async def receive_remove_bg_image(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -406,7 +408,9 @@ async def receive_remove_bg_image(update: Update, context: ContextTypes.DEFAULT_
 
 async def start_pdf_to_word(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
-    await query.edit_message_text("✅ សូមផ្ញើឯកសារ PDF មួយដែលអ្នកចង់បំប្លែងទៅជា Word (DOCX)។")
+    try: await query.message.delete()
+    except Exception: pass
+    await context.bot.send_message(chat_id=update.effective_chat.id, text="✅ សូមផ្ញើឯកសារ PDF មួយដែលអ្នកចង់បំប្លែងទៅជា Word (DOCX)។")
     return WAITING_FOR_PDF_TO_WORD
 
 async def receive_pdf_for_word(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -420,7 +424,9 @@ async def receive_pdf_for_word(update: Update, context: ContextTypes.DEFAULT_TYP
 
 async def start_media_downloader(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
-    await query.edit_message_text("✅ សូមផ្ញើតំណភ្ជាប់ (URL) នៃវីដេអូ (Youtube, TikTok, FB, IG...) មកឱ្យខ្ញុំ។")
+    try: await query.message.delete()
+    except Exception: pass
+    await context.bot.send_message(chat_id=update.effective_chat.id, text="✅ សូមផ្ញើតំណភ្ជាប់ (URL) នៃវីដេអូ (Youtube, TikTok, FB, IG...) មកឱ្យខ្ញុំ។")
     return WAITING_FOR_MEDIA_URL
 
 async def receive_media_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -434,14 +440,18 @@ async def start_pdf_to_img(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     keyboard = [[InlineKeyboardButton("➡️ JPG", callback_data='fmt_jpeg'),
                  InlineKeyboardButton("➡️ PNG", callback_data='fmt_png')],
                 [InlineKeyboardButton("⬅️ ត្រឡប់ក្រោយ", callback_data='main_menu')]]
-    await query.edit_message_text(text="សូមជ្រើសរើសប្រភេទរូបភាព៖", reply_markup=InlineKeyboardMarkup(keyboard))
+    try: await query.message.delete()
+    except Exception: pass
+    await context.bot.send_message(chat_id=update.effective_chat.id, text="សូមជ្រើសរើសប្រភេទរូបភាព៖", reply_markup=InlineKeyboardMarkup(keyboard))
     return SELECT_ACTION
 
 async def start_conversion_with_format(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     context.user_data['format'] = "jpeg" if query.data == 'fmt_jpeg' else "png"
     await query.answer()
-    await query.edit_message_text(f"✅ បានជ្រើសរើស {context.user_data['format'].upper()}។ សូមផ្ញើឯកសារ PDF មួយមកឱ្យខ្ញុំ។")
+    try: await query.message.delete()
+    except Exception: pass
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=f"✅ បានជ្រើសរើស {context.user_data['format'].upper()}។ សូមផ្ញើឯកសារ PDF មួយមកឱ្យខ្ញុំ។")
     return WAITING_PDF_TO_IMG_FILE
 
 async def receive_pdf_for_img(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -457,7 +467,9 @@ async def receive_pdf_for_img(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def start_merge(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
     context.user_data['merge_files'] = []
-    await query.edit_message_text("✅ សូមផ្ញើឯកសារ PDF ម្ដងមួយៗ។ ពេលរួចរាល់ សូមវាយ /done ។")
+    try: await query.message.delete()
+    except Exception: pass
+    await context.bot.send_message(chat_id=update.effective_chat.id, text="✅ សូមផ្ញើឯកសារ PDF ម្ដងមួយៗ។ ពេលរួចរាល់ សូមវាយ /done ។")
     return WAITING_FOR_MERGE
 
 async def receive_pdf_for_merge(update, context):
@@ -481,7 +493,9 @@ async def done_merging(update, context):
 
 async def start_split(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
-    await query.edit_message_text("✅ សូមផ្ញើឯកសារ PDF មួយដែលអ្នកចង់បំបែក។")
+    try: await query.message.delete()
+    except Exception: pass
+    await context.bot.send_message(chat_id=update.effective_chat.id, text="✅ សូមផ្ញើឯកសារ PDF មួយដែលអ្នកចង់បំបែក។")
     return WAITING_FOR_SPLIT_FILE
 
 async def receive_pdf_for_split(update, context):
@@ -503,7 +517,9 @@ async def receive_split_range(update, context):
 
 async def start_compress(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
-    await query.edit_message_text("✅ សូមផ្ញើឯកសារ PDF មួយដែលអ្នកចង់បន្ថយទំហំ។")
+    try: await query.message.delete()
+    except Exception: pass
+    await context.bot.send_message(chat_id=update.effective_chat.id, text="✅ សូមផ្ញើឯកសារ PDF មួយដែលអ្នកចង់បន្ថយទំហំ។")
     return WAITING_FOR_COMPRESS
 
 async def receive_pdf_for_compress(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -518,7 +534,9 @@ async def receive_pdf_for_compress(update: Update, context: ContextTypes.DEFAULT
 async def start_img_to_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
     context.user_data['img_to_pdf_files'] = []
-    await query.edit_message_text("✅ សូមផ្ញើរូបភាពម្ដងមួយៗ។ ពេលរួចរាល់ សូមវាយ /done ។")
+    try: await query.message.delete()
+    except Exception: pass
+    await context.bot.send_message(chat_id=update.effective_chat.id, text="✅ សូមផ្ញើរូបភាពម្ដងមួយៗ។ ពេលរួចរាល់ សូមវាយ /done ។")
     return WAITING_FOR_IMG_TO_PDF
 
 async def receive_img_for_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -542,7 +560,9 @@ async def done_img_to_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 async def start_img_to_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
-    await query.edit_message_text("✅ សូមផ្ញើរូបភាពមួយមកឱ្យខ្ញុំ ដើម្បីបំប្លែងទៅជាអក្សរ។")
+    try: await query.message.delete()
+    except Exception: pass
+    await context.bot.send_message(chat_id=update.effective_chat.id, text="✅ សូមផ្ញើរូបភាពមួយមកឱ្យខ្ញុំ ដើម្បីបំប្លែងទៅជាអក្សរ។")
     return WAITING_FOR_IMG_TO_TEXT_FILE
 
 async def receive_img_for_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -563,13 +583,17 @@ def create_format_buttons(formats, prefix, columns=3):
 async def start_audio_converter(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
     audio_formats = ['AAC', 'FLAC', 'M4A', 'MP3', 'OGG', 'WAV']
-    await query.edit_message_text(text="សូមជ្រើសរើសទ្រង់ទ្រាយសម្លេង៖", reply_markup=InlineKeyboardMarkup(create_format_buttons(audio_formats, "audio")))
+    try: await query.message.delete()
+    except Exception: pass
+    await context.bot.send_message(chat_id=update.effective_chat.id, text="សូមជ្រើសរើសទ្រង់ទ្រាយសម្លេង៖", reply_markup=InlineKeyboardMarkup(create_format_buttons(audio_formats, "audio")))
     return SELECT_ACTION
 
 async def select_audio_output(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
     context.user_data['output_format'] = query.data.split('_')[1]
-    await query.edit_message_text(f"✅ បានជ្រើសរើស {context.user_data['output_format'].upper()}។ សូមផ្ញើឯកសារសម្លេង។")
+    try: await query.message.delete()
+    except Exception: pass
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=f"✅ បានជ្រើសរើស {context.user_data['output_format'].upper()}។ សូមផ្ញើឯកសារសម្លេង។")
     return WAITING_FOR_AUDIO_FILE
 
 async def receive_audio_for_conversion(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -588,13 +612,17 @@ async def receive_audio_for_conversion(update: Update, context: ContextTypes.DEF
 async def start_video_converter(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
     video_formats = ['AVI', 'MKV', 'MOV', 'MP4', 'WEBM']
-    await query.edit_message_text(text="សូមជ្រើសរើសទ្រង់ទ្រាយវីដេអូ៖", reply_markup=InlineKeyboardMarkup(create_format_buttons(video_formats, "video")))
+    try: await query.message.delete()
+    except Exception: pass
+    await context.bot.send_message(chat_id=update.effective_chat.id, text="សូមជ្រើសរើសទ្រង់ទ្រាយវីដេអូ៖", reply_markup=InlineKeyboardMarkup(create_format_buttons(video_formats, "video")))
     return SELECT_ACTION
 
 async def select_video_output(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
     context.user_data['output_format'] = query.data.split('_')[1]
-    await query.edit_message_text(f"✅ បានជ្រើសរើស {context.user_data['output_format'].upper()}។ សូមផ្ញើឯកសារវីដេអូ។")
+    try: await query.message.delete()
+    except Exception: pass
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=f"✅ បានជ្រើសរើស {context.user_data['output_format'].upper()}។ សូមផ្ញើឯកសារវីដេអូ។")
     return WAITING_FOR_VIDEO_FILE
 
 async def receive_video_for_conversion(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -617,13 +645,17 @@ async def start_archive_manager(update: Update, context: ContextTypes.DEFAULT_TY
         [InlineKeyboardButton("➖ ពន្លាឯកសារ Archive", callback_data='archive_extract')],
         [InlineKeyboardButton("⬅️ ត្រឡប់ក្រោយ", callback_data='main_menu')]
     ]
-    await query.edit_message_text(text="សូមជ្រើសរើសសកម្មភាពសម្រាប់ Archive៖", reply_markup=InlineKeyboardMarkup(keyboard))
+    try: await query.message.delete()
+    except Exception: pass
+    await context.bot.send_message(chat_id=update.effective_chat.id, text="សូមជ្រើសរើសសកម្មភាពសម្រាប់ Archive៖", reply_markup=InlineKeyboardMarkup(keyboard))
     return SELECT_ACTION
 
 async def start_create_zip(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
     context.user_data['zip_files'] = []
-    await query.edit_message_text("✅ សូមផ្ញើឯកសារម្ដងមួយៗ។ ពេលរួចរាល់ សូមវាយ /done ។")
+    try: await query.message.delete()
+    except Exception: pass
+    await context.bot.send_message(chat_id=update.effective_chat.id, text="✅ សូមផ្ញើឯកសារម្ដងមួយៗ។ ពេលរួចរាល់ សូមវាយ /done ។")
     return WAITING_FOR_FILES_TO_ZIP
 
 async def receive_file_for_zip(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -650,7 +682,9 @@ async def done_zipping(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def start_extract_archive(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
-    await query.edit_message_text("✅ សូមផ្ញើឯកសារ Archive (ZIP, TAR) ដែលអ្នកចង់ពន្លា។")
+    try: await query.message.delete()
+    except Exception: pass
+    await context.bot.send_message(chat_id=update.effective_chat.id, text="✅ សូមផ្ញើឯកសារ Archive (ZIP, TAR) ដែលអ្នកចង់ពន្លា។")
     return WAITING_FOR_ARCHIVE_TO_EXTRACT
 
 async def receive_archive_to_extract(update: Update, context: ContextTypes.DEFAULT_TYPE):
