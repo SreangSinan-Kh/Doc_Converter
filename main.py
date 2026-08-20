@@ -185,7 +185,7 @@ async def media_conversion_task(chat_id, file_path, output_format, msg, context,
     output_path = f"converted_{chat_id}.{output_format}"
     try:
         await context.bot.edit_message_text(f"កំពុងបំប្លែងទៅជា {output_format.upper()}... ការងារនេះអាចត្រូវការពេលវេលាយូរបន្តិចសម្រាប់ឯកសារធំៗ។", chat_id=chat_id, message_id=msg.message_id)
-        ffmpeg.input(file_path).output(output_path).run(overwrite_output=True)
+        ffmpeg.input(file_path).output(output_path, preset='ultrafast', threads=2).run(overwrite_output=True)
         await context.bot.edit_message_text("បំប្លែងបានជោគជ័យ! កំពុងផ្ញើ...", chat_id=chat_id, message_id=msg.message_id)
         if media_type == 'audio':
             await context.bot.send_audio(chat_id=chat_id, audio=open(output_path, 'rb'))
