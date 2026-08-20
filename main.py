@@ -17,7 +17,7 @@ from PIL import Image
 import pytesseract
 from typing import Final
 
-# នាំចូល Library ទាំងអស់
+# នាំចូល Library (មិនមាន rembg នៅទីនេះទេ ដើម្បីកុំឱ្យស៊ីពេល Startup)
 try:
     from PyPDF2 import PdfReader, PdfWriter, PdfMerger
     from pdf2image import convert_from_path
@@ -25,7 +25,6 @@ try:
     import yt_dlp
     from gtts import gTTS
     from deep_translator import GoogleTranslator
-    from rembg import remove
 except ImportError:
     print("!!! កំហុស៖ សូមប្រាកដថាបានតម្លើង Library ទាំងអស់")
     sys.exit(1)
@@ -57,11 +56,9 @@ async def text_to_speech_task(chat_id, text, msg, context):
     try:
         await context.bot.edit_message_text("កំពុងបង្កើតសំឡេងអាន (សូមរង់ចាំ)... 🎙️", chat_id=chat_id, message_id=msg.message_id)
         out_file = f"audio_narration_{chat_id}.mp3"
-        # ប្រើ gTTS ដើម្បីបំប្លែងអក្សរទៅសំឡេង (ភាសាខ្មែរ)
         def create_audio():
             tts = gTTS(text=text, lang='km')
             tts.save(out_file)
-            
         await asyncio.to_thread(create_audio)
         await context.bot.edit_message_text("បង្កើតសំឡេងបានជោគជ័យ! កំពុងផ្ញើ... ✅", chat_id=chat_id, message_id=msg.message_id)
         await context.bot.send_audio(chat_id=chat_id, audio=open(out_file, 'rb'), title="Audio Narration")
@@ -73,7 +70,6 @@ async def text_to_speech_task(chat_id, text, msg, context):
 async def translate_text_task(chat_id, text, msg, context):
     try:
         await context.bot.edit_message_text("កំពុងបកប្រែអត្ថបទ... 🔄", chat_id=chat_id, message_id=msg.message_id)
-        # បកប្រែពីភាសាដើម (ស្វ័យប្រវត្តិ) ទៅជាភាសាខ្មែរ
         translated = await asyncio.to_thread(GoogleTranslator(source='auto', target='km').translate, text)
         await context.bot.edit_message_text("បកប្រែជោគជ័យ! ✅", chat_id=chat_id, message_id=msg.message_id)
         await context.bot.send_message(chat_id=chat_id, text=f"**អត្ថបទបកប្រែជាភាសាខ្មែរ៖**\n\n{translated}", parse_mode='Markdown')
@@ -84,6 +80,9 @@ async def remove_bg_task(chat_id, file_path, msg, context):
     out_file = f"nobg_{chat_id}.png"
     try:
         await context.bot.edit_message_text("កំពុងលុបផ្ទៃខាងក្រោយដោយប្រើ AI (អាចប្រើពេលបន្តិច)... ✂️", chat_id=chat_id, message_id=msg.message_id)
+        
+        # Lazy Import នៅទីនេះ ដើម្បីការពារការគាំងពេល Startup
+        from rembg import remove
         
         def process_image():
             with open(file_path, 'rb') as i:
@@ -102,7 +101,7 @@ async def remove_bg_task(chat_id, file_path, msg, context):
         if os.path.exists(out_file): os.remove(out_file)
 
 # ==========================================
-# អនុគមន៍ជំនួយការងារចាស់ៗ
+# អនុគមន៍ជំនួយការងារផ្សេងៗ
 # ==========================================
 async def pdf_to_word_task(chat_id, file_path, msg, context):
     output_path = f"converted_{chat_id}.docx"
@@ -127,6 +126,10 @@ async def download_media_task(chat_id, url, msg, context):
             'noplaylist': True,
             'quiet': True
         }
+        # បើមាន cookies.txt ប្រើប្រាស់វាដើម្បីឆ្លងកាត់ការទប់ស្កាត់ពី YouTube
+        if os.path.exists('cookies.txt'):
+            ydl_opts['cookiefile'] = 'cookies.txt'
+
         def run_ytdlp():
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
@@ -324,7 +327,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
          InlineKeyboardButton("🎬 បំប្លែងវីដេអូ", callback_data='video_converter')],
         [InlineKeyboardButton("⬇️ ទាញយកវីដេអូ", callback_data='media_downloader'),
          InlineKeyboardButton("🗜️ គ្រប់គ្រង Archive", callback_data='archive_manager')],
-        # ប៊ូតុងមុខងារថ្មីទាំង ៣
         [InlineKeyboardButton("🎙️ អត្ថបទ ទៅជា សំឡេង", callback_data='text_to_speech'),
          InlineKeyboardButton("🌍 បកប្រែអត្ថបទ (En->Km)", callback_data='translate_text')],
         [InlineKeyboardButton("✂️ លុបផ្ទៃខាងក្រោយរូបភាព (Remove BG)", callback_data='remove_bg')]
@@ -370,7 +372,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 # ==========================================
 async def start_tts(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
-    await query.edit_message_text("✅ សូមវាយ ឬ Copy អត្ថបទ (ភាសាខ្មែរ) បញ្ចូលមកទីនេះ ខ្ញុំនឹងអានវាជាសំឡេងជូនអ្នក។\n(ប្រវែងមិនគួរលើសពី ១០០០ ពាក្យ)")
+    await query.edit_message_text("✅ សូមវាយ ឬ Copy អត្ថបទ (ភាសាខ្មែរ) បញ្ចូលមកទីនេះ ខ្ញុំនឹងអានវាជាសំឡេងជូនអ្នក។")
     return WAITING_FOR_TTS
 
 async def receive_tts_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -381,7 +383,7 @@ async def receive_tts_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 async def start_translate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
-    await query.edit_message_text("✅ សូមវាយ ឬ Copy អត្ថបទភាសាអង់គ្លេស (ឬភាសាផ្សេង) បញ្ចូលមកទីនេះ ដើម្បីបកប្រែមកជាភាសាខ្មែរ។")
+    await query.edit_message_text("✅ សូមវាយ ឬ Copy អត្ថបទភាសាអង់គ្លេស បញ្ចូលមកទីនេះ ដើម្បីបកប្រែមកជាភាសាខ្មែរ។")
     return WAITING_FOR_TRANSLATE
 
 async def receive_translate_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
