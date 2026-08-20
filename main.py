@@ -52,19 +52,27 @@ logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s
 PROCESSED_UPDATES = set()
 
 def is_duplicate(update: Update) -> bool:
-    """ឆែកមើលថាតើសំណើនេះ Telegram ធ្លាប់បញ្ជូនមកហើយឬនៅ (ពេលវា Timeout)"""
     if not update: return False
     update_id = update.update_id
-    if update_id in PROCESSED_UPDATES:
-        return True # ធ្លាប់ទទួលហើយ ច្រានចោល
+    if update_id in PROCESSED_UPDATES: return True 
     PROCESSED_UPDATES.add(update_id)
-    # លុបអង្គចងចាំចោលខ្លះ បើវាច្រើនពេក (ការពារកុំឱ្យស៊ី RAM)
-    if len(PROCESSED_UPDATES) > 1000:
-        PROCESSED_UPDATES.clear()
+    if len(PROCESSED_UPDATES) > 1000: PROCESSED_UPDATES.clear()
     return False
 
 # ==========================================
-# អនុគមន៍បំពេញការងារ (Background Tasks)
+# ប្រព័ន្ធកម្តៅម៉ាស៊ីន (AI Pre-Warming)
+# ==========================================
+def warmup_services():
+    try:
+        logging.info(">>> កំពុងកម្តៅម៉ាស៊ីន (Warm-up)...")
+        from rembg import remove 
+        _ = urllib.parse.quote("warmup") 
+        logging.info(">>> កម្តៅម៉ាស៊ីនរួចរាល់! លឿនដូចហោះ!")
+    except Exception as e:
+        logging.error(f"Warm-up Error: {e}")
+
+# ==========================================
+# អនុគមន៍កម្រិតកំពូល (Background Multi-Threaded Tasks)
 # ==========================================
 async def text_to_speech_task(chat_id, text, msg, context):
     out_file = f"audio_narration_{chat_id}.mp3"
@@ -77,14 +85,13 @@ async def text_to_speech_task(chat_id, text, msg, context):
         await context.bot.edit_message_text("បង្កើតសំឡេងបានជោគជ័យ! កំពុងផ្ញើ... ✅", chat_id=chat_id, message_id=msg.message_id)
         await context.bot.send_audio(chat_id=chat_id, audio=open(out_file, 'rb'), title="Audio Narration")
     except Exception as e:
-        await context.bot.edit_message_text(f"មានបញ្ហាក្នុងការបង្កើតសំឡេង។\nកំហុស: {str(e)[:100]}", chat_id=chat_id, message_id=msg.message_id)
+        await context.bot.edit_message_text(f"កំហុសការបង្កើតសំឡេង: {str(e)[:100]}", chat_id=chat_id, message_id=msg.message_id)
     finally:
         if os.path.exists(out_file): os.remove(out_file)
 
 async def translate_text_task(chat_id, text, msg, context):
     try:
         await context.bot.edit_message_text("កំពុងបកប្រែអត្ថបទ... 🔄", chat_id=chat_id, message_id=msg.message_id)
-        
         def do_translate():
             encoded_text = urllib.parse.quote(text)
             url = f"https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=km&dt=t&q={encoded_text}"
@@ -92,30 +99,26 @@ async def translate_text_task(chat_id, text, msg, context):
             with urllib.request.urlopen(req) as response:
                 data = json.loads(response.read().decode('utf-8'))
                 return "".join([item[0] for item in data[0]])
-
         translated = await asyncio.to_thread(do_translate)
-            
         await context.bot.edit_message_text("បកប្រែជោគជ័យ! ✅", chat_id=chat_id, message_id=msg.message_id)
-        await context.bot.send_message(chat_id=chat_id, text=f"**អត្ថបទបកប្រែជាភាសាខ្មែរ៖**\n\n{translated}", parse_mode='Markdown')
+        await context.bot.send_message(chat_id=chat_id, text=f"**អត្ថបទបកប្រែ៖**\n\n{translated}", parse_mode='Markdown')
     except Exception as e:
-        await context.bot.edit_message_text(f"សុំទោស! ប្រព័ន្ធបកប្រែមានបញ្ហា។\nកំហុស: {str(e)[:100]}", chat_id=chat_id, message_id=msg.message_id)
+        await context.bot.edit_message_text(f"កំហុសប្រព័ន្ធបកប្រែ: {str(e)[:100]}", chat_id=chat_id, message_id=msg.message_id)
 
 async def remove_bg_task(chat_id, file_path, msg, context):
     out_file = f"nobg_{chat_id}.png"
     try:
-        await context.bot.edit_message_text("កំពុងលុបផ្ទៃខាងក្រោយដោយប្រើ AI (អាចប្រើពេលបន្តិច)... ✂️", chat_id=chat_id, message_id=msg.message_id)
+        await context.bot.edit_message_text("កំពុងលុបផ្ទៃខាងក្រោយដោយ AI... ✂️", chat_id=chat_id, message_id=msg.message_id)
         from rembg import remove
         def process_image():
-            with open(file_path, 'rb') as i:
-                input_data = i.read()
+            with open(file_path, 'rb') as i: input_data = i.read()
             output_data = remove(input_data)
-            with open(out_file, 'wb') as o:
-                o.write(output_data)
+            with open(out_file, 'wb') as o: o.write(output_data)
         await asyncio.to_thread(process_image)
-        await context.bot.edit_message_text("លុបផ្ទៃខាងក្រោយបានជោគជ័យ! កំពុងផ្ញើ... ✅", chat_id=chat_id, message_id=msg.message_id)
+        await context.bot.edit_message_text("លុបផ្ទៃខាងក្រោយជោគជ័យ! កំពុងផ្ញើ... ✅", chat_id=chat_id, message_id=msg.message_id)
         await context.bot.send_document(chat_id=chat_id, document=open(out_file, 'rb'), filename="Removed_Background.png")
     except Exception as e:
-        await context.bot.edit_message_text(f"មានបញ្ហាក្នុងការលុបផ្ទៃខាងក្រោយ។\nកំហុស: {str(e)[:100]}", chat_id=chat_id, message_id=msg.message_id)
+        await context.bot.edit_message_text(f"កំហុសការលុបផ្ទៃខាងក្រោយ: {str(e)[:100]}", chat_id=chat_id, message_id=msg.message_id)
     finally:
         if os.path.exists(file_path): os.remove(file_path)
         if os.path.exists(out_file): os.remove(out_file)
@@ -123,28 +126,31 @@ async def remove_bg_task(chat_id, file_path, msg, context):
 async def pdf_to_word_task(chat_id, file_path, msg, context):
     output_path = f"converted_{chat_id}.docx"
     try:
-        cv = Converter(file_path)
-        cv.convert(output_path)
-        cv.close()
-        await context.bot.edit_message_text("បំប្លែង PDF ទៅជា Word បានជោគជ័យ! ✅", chat_id=chat_id, message_id=msg.message_id)
+        await context.bot.edit_message_text("កំពុងបំប្លែង PDF ទៅ Word (កម្លាំង CPU ពេញ)... 📝", chat_id=chat_id, message_id=msg.message_id)
+        def do_pdf_word():
+            cv = Converter(file_path)
+            cv.convert(output_path, multi_processing=True, cpu_count=2) # ការងារកម្រិតកំពូល
+            cv.close()
+        await asyncio.to_thread(do_pdf_word)
+        await context.bot.edit_message_text("បំប្លែងជោគជ័យ! ✅", chat_id=chat_id, message_id=msg.message_id)
         await context.bot.send_document(chat_id=chat_id, document=open(output_path, 'rb'), filename="Document.docx")
     except Exception as e:
-        await context.bot.edit_message_text(f"មានបញ្ហាក្នុងការបំប្លែង។\nកំហុស: {e}", chat_id=chat_id, message_id=msg.message_id)
+        await context.bot.edit_message_text(f"កំហុសការបំប្លែង: {e}", chat_id=chat_id, message_id=msg.message_id)
     finally:
         if os.path.exists(file_path): os.remove(file_path)
         if os.path.exists(output_path): os.remove(output_path)
 
 async def download_media_task(chat_id, url, msg, context):
     try:
-        await context.bot.edit_message_text("កំពុងទាញយកទិន្នន័យពីតំណភ្ជាប់នេះ (អាចចំណាយពេលបន្តិច)... ⬇️", chat_id=chat_id, message_id=msg.message_id)
+        await context.bot.edit_message_text("កំពុងទាញយកទិន្នន័យ (Multi-thread)... ⬇️", chat_id=chat_id, message_id=msg.message_id)
         ydl_opts = {
             'outtmpl': f'downloaded_{chat_id}_%(title)s.%(ext)s',
             'format': 'best[filesize<50M]/best',
             'noplaylist': True,
-            'quiet': True
+            'quiet': True,
+            'concurrent_fragment_downloads': 5 # ទាញយក ៥ បំណែកព្រមគ្នា
         }
-        if os.path.exists('cookies.txt'):
-            ydl_opts['cookiefile'] = 'cookies.txt'
+        if os.path.exists('cookies.txt'): ydl_opts['cookiefile'] = 'cookies.txt'
 
         def run_ytdlp():
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -152,37 +158,45 @@ async def download_media_task(chat_id, url, msg, context):
                 return ydl.prepare_filename(info)
 
         downloaded_file = await asyncio.to_thread(run_ytdlp)
-        await context.bot.edit_message_text("ទាញយកជោគជ័យ! កំពុងផ្ញើឯកសារ... ✅", chat_id=chat_id, message_id=msg.message_id)
+        await context.bot.edit_message_text("ទាញយកជោគជ័យ! កំពុងផ្ញើ... ✅", chat_id=chat_id, message_id=msg.message_id)
         await context.bot.send_document(chat_id=chat_id, document=open(downloaded_file, 'rb'))
         if os.path.exists(downloaded_file): os.remove(downloaded_file)
     except Exception as e:
-        await context.bot.edit_message_text(f"មិនអាចទាញយកបានទេ (សូមប្រាកដថាវីដេអូមិន Private ឬលើស 50MB)។\nកំហុស: {str(e)[:100]}", chat_id=chat_id, message_id=msg.message_id)
+        await context.bot.edit_message_text(f"កំហុសការទាញយក: {str(e)[:100]}", chat_id=chat_id, message_id=msg.message_id)
 
 async def pdf_to_img_task(chat_id, file_path, msg, context, fmt):
     try:
-        images = convert_from_path(file_path, dpi=200, fmt=fmt)
-        await context.bot.edit_message_text(f"បំប្លែងបាន {len(images)} ទំព័រ។ កំពុងផ្ញើរូបភាព... ✅", chat_id=chat_id, message_id=msg.message_id)
+        await context.bot.edit_message_text("កំពុងបំប្លែងជា រូបភាព (Multi-thread)... 🖼️", chat_id=chat_id, message_id=msg.message_id)
+        def do_pdf_img():
+            return convert_from_path(file_path, dpi=150, fmt=fmt, thread_count=2) # កាត់បន្ថយ DPI និងប្រើ 2 Threads
+        images = await asyncio.to_thread(do_pdf_img)
+        
+        await context.bot.edit_message_text(f"បំប្លែងបាន {len(images)} ទំព័រ។ កំពុងផ្ញើ... ✅", chat_id=chat_id, message_id=msg.message_id)
         for i, image in enumerate(images):
             out_path = f"page_{i+1}_{chat_id}.{fmt}"
             image.save(out_path, fmt.upper())
             await context.bot.send_photo(chat_id=chat_id, photo=open(out_path, 'rb'))
             os.remove(out_path)
     except Exception as e:
-        await context.bot.edit_message_text(f"មានបញ្ហាក្នុងការបំប្លែង PDF ទៅជារូបភាព។\nកំហុស: {e}", chat_id=chat_id, message_id=msg.message_id)
+        await context.bot.edit_message_text(f"កំហុសការបំប្លែងរូបភាព: {e}", chat_id=chat_id, message_id=msg.message_id)
     finally:
         if os.path.exists(file_path): os.remove(file_path)
 
 async def merge_pdf_task(chat_id, file_paths, msg, context):
     output_path = f"merged_{chat_id}.pdf"
     try:
-        merger = PdfMerger()
-        for path in file_paths: merger.append(path)
-        merger.write(output_path)
-        merger.close()
-        await context.bot.edit_message_text("បញ្ចូលឯកសារបានជោគជ័យ! ✅", chat_id=chat_id, message_id=msg.message_id)
+        await context.bot.edit_message_text("កំពុងបញ្ចូលឯកសារ... 🖇️", chat_id=chat_id, message_id=msg.message_id)
+        def do_merge():
+            merger = PdfMerger()
+            for path in file_paths: merger.append(path)
+            merger.write(output_path)
+            merger.close()
+        await asyncio.to_thread(do_merge)
+        
+        await context.bot.edit_message_text("បញ្ចូលជោគជ័យ! ✅", chat_id=chat_id, message_id=msg.message_id)
         await context.bot.send_document(chat_id=chat_id, document=open(output_path, 'rb'), filename="Merged.pdf")
     except Exception as e:
-        await context.bot.edit_message_text(f"មានបញ្ហាក្នុងការបញ្ចូលឯកសារ។\nកំហុស: {e}", chat_id=chat_id, message_id=msg.message_id)
+        await context.bot.edit_message_text(f"កំហុស: {e}", chat_id=chat_id, message_id=msg.message_id)
     finally:
         for path in file_paths:
             if os.path.exists(path): os.remove(path)
@@ -191,25 +205,27 @@ async def merge_pdf_task(chat_id, file_paths, msg, context):
 async def split_pdf_task(chat_id, file_path, page_range_str, msg, context):
     output_path = f"split_{chat_id}.pdf"
     try:
-        writer = PdfWriter()
-        reader = PdfReader(file_path)
-        pages_to_extract = set()
-        parts = page_range_str.split(',')
-        for part in parts:
-            part = part.strip()
-            if '-' in part:
-                start, end = map(int, part.split('-'))
-                for i in range(start, end + 1): pages_to_extract.add(i-1)
-            else:
-                pages_to_extract.add(int(part)-1)
-        for i in sorted(list(pages_to_extract)):
-            if 0 <= i < len(reader.pages): writer.add_page(reader.pages[i])
-        if not writer.pages: raise ValueError("ទំព័រមិនត្រឹមត្រូវ")
-        writer.write(output_path)
-        await context.bot.edit_message_text("បំបែកឯកសារបានជោគជ័យ! ✅", chat_id=chat_id, message_id=msg.message_id)
+        await context.bot.edit_message_text("កំពុងបំបែកឯកសារ... ✂️", chat_id=chat_id, message_id=msg.message_id)
+        def do_split():
+            writer = PdfWriter()
+            reader = PdfReader(file_path)
+            pages_to_extract = set()
+            for part in page_range_str.split(','):
+                part = part.strip()
+                if '-' in part:
+                    start, end = map(int, part.split('-'))
+                    for i in range(start, end + 1): pages_to_extract.add(i-1)
+                else: pages_to_extract.add(int(part)-1)
+            for i in sorted(list(pages_to_extract)):
+                if 0 <= i < len(reader.pages): writer.add_page(reader.pages[i])
+            if not writer.pages: raise ValueError("ទំព័រមិនត្រឹមត្រូវ")
+            writer.write(output_path)
+        await asyncio.to_thread(do_split)
+
+        await context.bot.edit_message_text("បំបែកជោគជ័យ! ✅", chat_id=chat_id, message_id=msg.message_id)
         await context.bot.send_document(chat_id=chat_id, document=open(output_path, 'rb'), filename="Split.pdf")
     except Exception as e:
-        await context.bot.edit_message_text(f"មានបញ្ហាក្នុងការបំបែក។\nសូមប្រាកដថាទម្រង់លេខទំព័រត្រឹមត្រូវ។", chat_id=chat_id, message_id=msg.message_id)
+        await context.bot.edit_message_text(f"កំហុសការបំបែក: ទម្រង់លេខខុស។", chat_id=chat_id, message_id=msg.message_id)
     finally:
         if os.path.exists(file_path): os.remove(file_path)
         if os.path.exists(output_path): os.remove(output_path)
@@ -217,16 +233,20 @@ async def split_pdf_task(chat_id, file_path, page_range_str, msg, context):
 async def compress_pdf_task(chat_id, file_path, msg, context):
     output_path = f"compressed_{chat_id}.pdf"
     try:
-        reader = PdfReader(file_path)
-        writer = PdfWriter()
-        for page in reader.pages:
-            page.compress_content_streams()
-            writer.add_page(page)
-        with open(output_path, "wb") as f: writer.write(f)
-        await context.bot.edit_message_text("បន្ថយទំហំឯកសារបានជោគជ័យ! ✅", chat_id=chat_id, message_id=msg.message_id)
+        await context.bot.edit_message_text("កំពុងបន្ថយទំហំឯកសារ... 📦", chat_id=chat_id, message_id=msg.message_id)
+        def do_compress():
+            reader = PdfReader(file_path)
+            writer = PdfWriter()
+            for page in reader.pages:
+                page.compress_content_streams()
+                writer.add_page(page)
+            with open(output_path, "wb") as f: writer.write(f)
+        await asyncio.to_thread(do_compress)
+        
+        await context.bot.edit_message_text("បន្ថយទំហំជោគជ័យ! ✅", chat_id=chat_id, message_id=msg.message_id)
         await context.bot.send_document(chat_id=chat_id, document=open(output_path, 'rb'), filename="Compressed.pdf")
     except Exception as e:
-        await context.bot.edit_message_text(f"មានបញ្ហាក្នុងការបន្ថយទំហំឯកសារ។\nកំហុស: {e}", chat_id=chat_id, message_id=msg.message_id)
+        await context.bot.edit_message_text(f"កំហុសការបន្ថយទំហំ: {e}", chat_id=chat_id, message_id=msg.message_id)
     finally:
         if os.path.exists(file_path): os.remove(file_path)
         if os.path.exists(output_path): os.remove(output_path)
@@ -234,9 +254,13 @@ async def compress_pdf_task(chat_id, file_path, msg, context):
 async def img_to_pdf_task(chat_id, file_paths, msg, context):
     output_path = f"converted_from_img_{chat_id}.pdf"
     try:
-        image_list = [Image.open(path).convert('RGB') for path in file_paths]
-        image_list[0].save(output_path, "PDF", resolution=100.0, save_all=True, append_images=image_list[1:])
-        await context.bot.edit_message_text("បំប្លែងរូបភាពទៅជា PDF បានជោគជ័យ! ✅", chat_id=chat_id, message_id=msg.message_id)
+        await context.bot.edit_message_text("កំពុងបំប្លែងរូបភាពទៅជា PDF... 📄", chat_id=chat_id, message_id=msg.message_id)
+        def do_img_pdf():
+            image_list = [Image.open(path).convert('RGB') for path in file_paths]
+            image_list[0].save(output_path, "PDF", resolution=100.0, save_all=True, append_images=image_list[1:])
+        await asyncio.to_thread(do_img_pdf)
+        
+        await context.bot.edit_message_text("បំប្លែងជោគជ័យ! ✅", chat_id=chat_id, message_id=msg.message_id)
         await context.bot.send_document(chat_id=chat_id, document=open(output_path, 'rb'), filename="Image_to_PDF.pdf")
     except Exception as e:
         await context.bot.edit_message_text(f"កំហុស: {e}", chat_id=chat_id, message_id=msg.message_id)
@@ -247,30 +271,37 @@ async def img_to_pdf_task(chat_id, file_paths, msg, context):
 
 async def img_to_text_task(chat_id, file_path, msg, context):
     try:
-        image = Image.open(file_path)
-        text = pytesseract.image_to_string(image, lang='khm+eng')
-        await context.bot.edit_message_text("បំប្លែងរូបភាពទៅជាអក្សរបានជោគជ័យ! ✅", chat_id=chat_id, message_id=msg.message_id)
+        await context.bot.edit_message_text("កំពុងអានអក្សរពីរូបភាព... 📖", chat_id=chat_id, message_id=msg.message_id)
+        def do_ocr():
+            image = Image.open(file_path)
+            custom_config = r'--oem 3 --psm 3' # ដោះសោរល្បឿន OCR
+            return pytesseract.image_to_string(image, lang='khm+eng', config=custom_config)
+        text = await asyncio.to_thread(do_ocr)
+        
+        await context.bot.edit_message_text("បំប្លែងជោគជ័យ! ✅", chat_id=chat_id, message_id=msg.message_id)
         if not text.strip():
-            await context.bot.send_message(chat_id=chat_id, text="មិនអាចរកឃើញអក្សរនៅក្នុងរូបភាពនេះទេ ឬរូបភាពគ្មានគុណភាពល្អ។")
+            await context.bot.send_message(chat_id=chat_id, text="មិនអាចរកឃើញអក្សរនៅក្នុងរូបភាពនេះទេ។")
         else:
-            await context.bot.send_message(chat_id=chat_id, text=f"**លទ្ធផលដែលបានបំប្លែង៖**\n\n```\n{text}\n```", parse_mode='Markdown')
+            await context.bot.send_message(chat_id=chat_id, text=f"**លទ្ធផល៖**\n\n```\n{text}\n```", parse_mode='Markdown')
     except Exception as e:
-        await context.bot.edit_message_text(f"មានបញ្ហាក្នុងការបំប្លែងរូបភាពទៅជាអក្សរ។\nកំហុស: {e}", chat_id=chat_id, message_id=msg.message_id)
+        await context.bot.edit_message_text(f"កំហុសការបំប្លែង: {e}", chat_id=chat_id, message_id=msg.message_id)
     finally:
         if os.path.exists(file_path): os.remove(file_path)
 
 async def media_conversion_task(chat_id, file_path, output_format, msg, context, media_type='audio'):
     output_path = f"converted_{chat_id}.{output_format}"
     try:
-        await context.bot.edit_message_text(f"កំពុងបំប្លែងទៅជា {output_format.upper()}...", chat_id=chat_id, message_id=msg.message_id)
-        ffmpeg.input(file_path).output(output_path, preset='ultrafast', threads=2).run(overwrite_output=True)
-        await context.bot.edit_message_text("បំប្លែងបានជោគជ័យ! ✅", chat_id=chat_id, message_id=msg.message_id)
-        if media_type == 'audio':
-            await context.bot.send_audio(chat_id=chat_id, audio=open(output_path, 'rb'))
-        else:
-            await context.bot.send_video(chat_id=chat_id, video=open(output_path, 'rb'))
+        await context.bot.edit_message_text(f"កំពុងបំប្លែងទៅ {output_format.upper()} (Max Speed)... 🎬", chat_id=chat_id, message_id=msg.message_id)
+        def do_convert():
+            # ប្រើកម្លាំង CPU ទាំងអស់ដែលមាន (threads=0) និង preset ultrafast
+            ffmpeg.input(file_path).output(output_path, preset='ultrafast', threads=0).run(overwrite_output=True)
+        await asyncio.to_thread(do_convert)
+        
+        await context.bot.edit_message_text("បំប្លែងជោគជ័យ! ✅", chat_id=chat_id, message_id=msg.message_id)
+        if media_type == 'audio': await context.bot.send_audio(chat_id=chat_id, audio=open(output_path, 'rb'))
+        else: await context.bot.send_video(chat_id=chat_id, video=open(output_path, 'rb'))
     except Exception as e:
-        await context.bot.edit_message_text(f"មានបញ្ហាក្នុងការបំប្លែង។\nកំហុស: {e}", chat_id=chat_id, message_id=msg.message_id)
+        await context.bot.edit_message_text(f"កំហុសការបំប្លែង: {e}", chat_id=chat_id, message_id=msg.message_id)
     finally:
         if os.path.exists(file_path): os.remove(file_path)
         if os.path.exists(output_path): os.remove(output_path)
@@ -278,14 +309,17 @@ async def media_conversion_task(chat_id, file_path, output_format, msg, context,
 async def create_zip_task(chat_id, file_paths, msg, context):
     output_path = f"archive_{chat_id}.zip"
     try:
-        await context.bot.edit_message_text("កំពុងបង្កើតឯកសារ ZIP...", chat_id=chat_id, message_id=msg.message_id)
-        with zipfile.ZipFile(output_path, 'w') as zipf:
-            for file_path in file_paths:
-                zipf.write(file_path, os.path.basename(file_path))
-        await context.bot.edit_message_text("បង្កើតឯកសារ ZIP បានជោគជ័យ! ✅", chat_id=chat_id, message_id=msg.message_id)
+        await context.bot.edit_message_text("កំពុងបង្កើត ZIP ផ្លេកបន្ទោរ... 📦", chat_id=chat_id, message_id=msg.message_id)
+        def do_zip():
+            # កំណត់កម្រិត compresslevel=1 ដើម្បីឱ្យវាខ្ចប់បានលឿនបំផុត
+            with zipfile.ZipFile(output_path, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=1) as zipf:
+                for p in file_paths: zipf.write(p, os.path.basename(p))
+        await asyncio.to_thread(do_zip)
+        
+        await context.bot.edit_message_text("បង្កើត ZIP ជោគជ័យ! ✅", chat_id=chat_id, message_id=msg.message_id)
         await context.bot.send_document(chat_id=chat_id, document=open(output_path, 'rb'), filename="archive.zip")
     except Exception as e:
-        await context.bot.edit_message_text(f"កំហុសការបង្កើត ZIP: {e}", chat_id=chat_id, message_id=msg.message_id)
+        await context.bot.edit_message_text(f"កំហុស ZIP: {e}", chat_id=chat_id, message_id=msg.message_id)
     finally:
         for path in file_paths:
             if os.path.exists(path): os.remove(path)
@@ -294,25 +328,25 @@ async def create_zip_task(chat_id, file_paths, msg, context):
 async def extract_archive_task(chat_id, file_path, msg, context):
     extract_dir = f"extracted_{chat_id}"
     try:
-        await context.bot.edit_message_text("កំពុងពន្លាឯកសារ...", chat_id=chat_id, message_id=msg.message_id)
-        os.makedirs(extract_dir, exist_ok=True)
-        if file_path.endswith('.zip'):
-            with zipfile.ZipFile(file_path, 'r') as zip_ref: zip_ref.extractall(extract_dir)
-        elif file_path.endswith('.tar.gz') or file_path.endswith('.tgz'):
-            with tarfile.open(file_path, 'r:gz') as tar_ref: tar_ref.extractall(extract_dir)
-        elif file_path.endswith('.tar'):
-            with tarfile.open(file_path, 'r:') as tar_ref: tar_ref.extractall(extract_dir)
-        else:
-            raise ValueError("មិនគាំទ្រទ្រង់ទ្រាយឯកសារនេះទេ។")
+        await context.bot.edit_message_text("កំពុងពន្លាឯកសារ... 📂", chat_id=chat_id, message_id=msg.message_id)
+        def do_extract():
+            os.makedirs(extract_dir, exist_ok=True)
+            if file_path.endswith('.zip'):
+                with zipfile.ZipFile(file_path, 'r') as zip_ref: zip_ref.extractall(extract_dir)
+            elif file_path.endswith('.tar.gz') or file_path.endswith('.tgz'):
+                with tarfile.open(file_path, 'r:gz') as tar_ref: tar_ref.extractall(extract_dir)
+            elif file_path.endswith('.tar'):
+                with tarfile.open(file_path, 'r:') as tar_ref: tar_ref.extractall(extract_dir)
+            else: raise ValueError("មិនគាំទ្រឯកសារនេះ។")
+        await asyncio.to_thread(do_extract)
         
         extracted_files = os.listdir(extract_dir)
         await context.bot.edit_message_text(f"ពន្លាបាន {len(extracted_files)} ឯកសារ។ កំពុងផ្ញើ... ✅", chat_id=chat_id, message_id=msg.message_id)
         for filename in extracted_files:
             full_path = os.path.join(extract_dir, filename)
-            if os.path.isfile(full_path):
-                 await context.bot.send_document(chat_id=chat_id, document=open(full_path, 'rb'))
+            if os.path.isfile(full_path): await context.bot.send_document(chat_id=chat_id, document=open(full_path, 'rb'))
     except Exception as e:
-        await context.bot.edit_message_text(f"កំហុស: {e}", chat_id=chat_id, message_id=msg.message_id)
+        await context.bot.edit_message_text(f"កំហុសពន្លាឯកសារ: {e}", chat_id=chat_id, message_id=msg.message_id)
     finally:
         if os.path.exists(file_path): os.remove(file_path)
         if os.path.isdir(extract_dir): shutil.rmtree(extract_dir)
@@ -322,11 +356,12 @@ async def extract_archive_task(chat_id, file_path, msg, context):
 # ==========================================
 async def setup_commands(application: Application):
     commands = [
-        BotCommand("start", "🏠 បើកផ្ទាំងបញ្ជាដើម (Main Menu)"),
-        BotCommand("help", "ℹ️ ជំនួយ និងរបៀបប្រើប្រាស់"),
-        BotCommand("cancel", "❌ បោះបង់ប្រតិបត្តិការបច្ចុប្បន្ន")
+        BotCommand("start", "🏠 បើកផ្ទាំងបញ្ជាដើម"),
+        BotCommand("help", "ℹ️ ជំនួយការប្រើប្រាស់"),
+        BotCommand("cancel", "❌ បោះបង់សកម្មភាព")
     ]
     await application.bot.set_my_commands(commands)
+    asyncio.create_task(asyncio.to_thread(warmup_services))
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     keyboard = [
@@ -346,7 +381,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         [InlineKeyboardButton("✂️ លុបផ្ទៃខាងក្រោយរូបភាព (Remove BG)", callback_data='remove_bg')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    text = '👋 **សួស្តី! ខ្ញុំជាជំនួយការឯកសារឆ្លាតវៃរបស់អ្នក។**\n\nតើថ្ងៃនេះអ្នកចង់ឱ្យខ្ញុំជួយរៀបចំអ្វីដែរ? សូមជ្រើសរើសមុខងារខាងក្រោម៖'
+    text = '👋 **សួស្តី! ខ្ញុំជាជំនួយការឯកសារឆ្លាតវៃ។**\n\nតើថ្ងៃនេះអ្នកចង់ឱ្យខ្ញុំជួយរៀបចំអ្វីដែរ?'
     LOGO_URL = "https://cdn-icons-png.flaticon.com/512/2721/2721265.png"
     
     if update.callback_query:
@@ -359,31 +394,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return SELECT_ACTION
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    help_text = """
-🛠 **របៀបប្រើប្រាស់ប្រព័ន្ធជំនួយការឯកសារ** 🛠
-
-📄 **ផ្នែក PDF**
-• បំប្លែង PDF ទៅជារូបភាព ឬ Word
-• បញ្ចូល, បំបែក និងបន្ថយទំហំ PDF
-
-🖼 **ផ្នែករូបភាព & ឆ្លាតវៃ (AI)**
-• ទាញអក្សរពីរូបភាព (OCR)
-• លុបផ្ទៃខាងក្រោយរូបភាពស្វ័យប្រវត្តិ (Remove BG) ✂️
-
-🎬 **ផ្នែក Media & Social**
-• បំប្លែង Format សម្លេង និង វីដេអូ
-• ទាញយកវីដេអូពី Social Media ⬇️
-
-🌍 **ផ្នែកអត្ថបទ**
-• បកប្រែអត្ថបទ (អង់គ្លេស មក ខ្មែរ) ស្វ័យប្រវត្តិ 
-• បំប្លែងអត្ថបទទៅជាសំឡេង (Audio Narration) 🎙️
-
-⚠️ **កំណត់សម្គាល់៖** ឯកសារត្រូវមានទំហំមិនលើសពី **50MB** ឡើយ។ វាយបញ្ជា `/cancel` ដើម្បីបោះបង់សកម្មភាព។
-    """
+    help_text = "🛠 **របៀបប្រើប្រាស់ប្រព័ន្ធជំនួយការឯកសារ** 🛠\n\n⚠️ **កំណត់សម្គាល់៖** ឯកសារត្រូវមានទំហំមិនលើសពី **50MB** ឡើយ។ វាយបញ្ជា `/cancel` ដើម្បីបោះបង់សកម្មភាព។"
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
 # ==========================================
-# Handlers (មានបំពាក់ប្រព័ន្ធការពារ Duplicate)
+# Handlers 
 # ==========================================
 async def start_tts(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
@@ -417,7 +432,7 @@ async def start_remove_bg(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     query = update.callback_query; await query.answer()
     try: await query.message.delete()
     except Exception: pass
-    await context.bot.send_message(chat_id=update.effective_chat.id, text="✅ សូមផ្ញើរូបភាពមួយមកឱ្យខ្ញុំ ខ្ញុំនឹងកាត់យកតែរូបភាព និងលុបផ្ទៃខាងក្រោយចោល។")
+    await context.bot.send_message(chat_id=update.effective_chat.id, text="✅ សូមផ្ញើរូបភាពមួយមកឱ្យខ្ញុំ ខ្ញុំនឹងលុបផ្ទៃខាងក្រោយចោល។")
     return WAITING_FOR_REMOVE_BG
 
 async def receive_remove_bg_image(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -480,7 +495,7 @@ async def start_conversion_with_format(update: Update, context: ContextTypes.DEF
     await query.answer()
     try: await query.message.delete()
     except Exception: pass
-    await context.bot.send_message(chat_id=update.effective_chat.id, text=f"✅ បានជ្រើសរើស {context.user_data['format'].upper()}។ សូមផ្ញើឯកសារ PDF មួយមកឱ្យខ្ញុំ។")
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=f"✅ បានជ្រើសរើស {context.user_data['format'].upper()}។ សូមផ្ញើឯកសារ PDF។")
     return WAITING_PDF_TO_IMG_FILE
 
 async def receive_pdf_for_img(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -515,7 +530,7 @@ async def receive_pdf_for_merge(update, context):
 async def done_merging(update, context):
     if is_duplicate(update): return ConversationHandler.END
     if 'merge_files' not in context.user_data or len(context.user_data['merge_files']) < 2:
-        await update.message.reply_text("សូមផ្ញើឯកសារ PDF យ៉ាងហោចណាស់ ២ មុននឹងវាយ /done ។")
+        await update.message.reply_text("សូមផ្ញើ PDF យ៉ាងហោចណាស់ ២។")
         return WAITING_FOR_MERGE
     msg = await update.message.reply_text("យល់ព្រម! កំពុងបញ្ចូលឯកសារ...")
     await merge_pdf_task(update.effective_chat.id, context.user_data['merge_files'], msg, context)
@@ -585,7 +600,7 @@ async def receive_img_for_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def done_img_to_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if is_duplicate(update): return ConversationHandler.END
     if 'img_to_pdf_files' not in context.user_data or len(context.user_data['img_to_pdf_files']) < 1:
-        await update.message.reply_text("សូមផ្ញើរូបភាពយ៉ាងហោចណាស់ ១ មុននឹងវាយ /done ។")
+        await update.message.reply_text("សូមផ្ញើរូបភាពយ៉ាងហោចណាស់ ១។")
         return WAITING_FOR_IMG_TO_PDF
     msg = await update.message.reply_text("យល់ព្រម! កំពុងបំប្លែងរូបភាពទៅជា PDF...")
     await img_to_pdf_task(update.effective_chat.id, context.user_data['img_to_pdf_files'], msg, context)
@@ -634,9 +649,7 @@ async def select_audio_output(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def receive_audio_for_conversion(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if is_duplicate(update): return ConversationHandler.END
     file_obj = update.message.audio or update.message.voice or update.message.document
-    if not file_obj:
-        await update.message.reply_text("សូមផ្ញើឯកសារសម្លេងត្រឹមត្រូវ។")
-        return WAITING_FOR_AUDIO_FILE
+    if not file_obj: return WAITING_FOR_AUDIO_FILE
     file = await file_obj.get_file()
     file_path = f"temp_{file.file_id}"
     await file.download_to_drive(file_path)
@@ -664,9 +677,7 @@ async def select_video_output(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def receive_video_for_conversion(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if is_duplicate(update): return ConversationHandler.END
     file_obj = update.message.video or update.message.video_note or update.message.document
-    if not file_obj:
-        await update.message.reply_text("សូមផ្ញើឯកសារវីដេអូត្រឹមត្រូវ។")
-        return WAITING_FOR_VIDEO_FILE
+    if not file_obj: return WAITING_FOR_VIDEO_FILE
     file = await file_obj.get_file()
     file_path = f"temp_{file.file_id}"
     await file.download_to_drive(file_path)
@@ -697,9 +708,7 @@ async def start_create_zip(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 async def receive_file_for_zip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     doc = update.message.document
-    if not doc:
-        await update.message.reply_text("សូមផ្ញើជាឯកសារ (Document)។")
-        return WAITING_FOR_FILES_TO_ZIP
+    if not doc: return WAITING_FOR_FILES_TO_ZIP
     file = await doc.get_file()
     file_path = f"temp_{file.file_unique_id}_{doc.file_name}"
     await file.download_to_drive(file_path)
@@ -711,7 +720,6 @@ async def receive_file_for_zip(update: Update, context: ContextTypes.DEFAULT_TYP
 async def done_zipping(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_duplicate(update): return ConversationHandler.END
     if 'zip_files' not in context.user_data or not context.user_data['zip_files']:
-        await update.message.reply_text("សូមផ្ញើឯកសារយ៉ាងហោចណាស់ ១ មុននឹងវាយ /done ។")
         return WAITING_FOR_FILES_TO_ZIP
     msg = await update.message.reply_text("យល់ព្រម! កំពុងបង្កើតឯកសារ ZIP...")
     await create_zip_task(update.effective_chat.id, context.user_data['zip_files'], msg, context)
@@ -728,9 +736,7 @@ async def start_extract_archive(update: Update, context: ContextTypes.DEFAULT_TY
 async def receive_archive_to_extract(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_duplicate(update): return ConversationHandler.END
     doc = update.message.document
-    if not doc:
-        await update.message.reply_text("សូមផ្ញើជាឯកសារ Archive ។")
-        return WAITING_FOR_ARCHIVE_TO_EXTRACT
+    if not doc: return WAITING_FOR_ARCHIVE_TO_EXTRACT
     file = await doc.get_file()
     file_path = f"temp_{file.file_unique_id}_{doc.file_name}"
     await file.download_to_drive(file_path)
