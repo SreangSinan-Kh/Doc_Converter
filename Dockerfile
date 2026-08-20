@@ -4,7 +4,7 @@ FROM python:3.12.1-slim
 # កំណត់ទីតាំងធ្វើការក្នុង Container
 WORKDIR /app
 
-# ទីនេះហើយដែលយើងបន្ថែម poppler-utils ចូល
+# ដំឡើងកម្មវិធីប្រព័ន្ធ (FFmpeg, Tesseract និង Poppler)
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     tesseract-ocr \
