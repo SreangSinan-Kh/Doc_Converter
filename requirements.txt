@@ -4,3 +4,5 @@ pytesseract
 PyPDF2
 pdf2image
 ffmpeg-python
+yt-dlp
+pdf2docx
