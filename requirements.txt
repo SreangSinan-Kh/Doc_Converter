@@ -1,0 +1,6 @@
+python-telegram-bot[webhooks]>=20.4
+Pillow
+pytesseract
+PyPDF2
+pdf2image
+ffmpeg-python
