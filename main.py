@@ -843,7 +843,6 @@ def main() -> None:
     application.add_handler(CommandHandler("help", help_command))
     
     print(">>> Bot កំពុងដំណើរការដោយប្រព័ន្ធ Polling លើម៉ាស៊ីន VM...")
-    application.run_polling(allowed_updates=Update.ALL, drop_pending_updates=True)
-
+    application.run_polling
 if __name__ == "__main__":
     main()
