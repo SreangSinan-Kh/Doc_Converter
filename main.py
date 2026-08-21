@@ -33,7 +33,7 @@ except Exception as e:
     print(f"!!! កំហុសពេលទាញយក Library: {e}")
     sys.exit(1)
 
-BOT_TOKEN: Final = os.environ.get("BOT_TOKEN", "") 
+BOT_TOKEN: Final = os.environ.get("BOT_TOKEN", "8907584091:AAGRcyUdQD4fb6GOIW6VuDNuTh7g-hArqA4") 
 MAX_FILE_SIZE: Final = 50 * 1024 * 1024 # 50 MB
 
 if not BOT_TOKEN:
@@ -359,7 +359,7 @@ async def extract_archive_task(chat_id, file_path, msg, context):
         if os.path.isdir(extract_dir): shutil.rmtree(extract_dir)
 
 # ==========================================
-# UI / UX និង Menu Start (គ្រប់មុខងារទាំងអស់)
+# UI / UX និង Menu Start
 # ==========================================
 async def setup_commands(application: Application):
     commands = [
@@ -385,7 +385,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
          InlineKeyboardButton("🗜️ គ្រប់គ្រង Archive", callback_data='archive_manager')],
         [InlineKeyboardButton("🎙️ អត្ថបទ ទៅជា សំឡេង", callback_data='text_to_speech'),
          InlineKeyboardButton("🌍 បកប្រែអត្ថបទ (En->Km)", callback_data='translate_text')],
-        [InlineKeyboardButton("✂️ លុបផ្ទៃខាងក្រោយរូបភាព (Remove BG)", callback_data='remove_bg')]
+        [InlineKeyboardButton("✂️ លុបផ្ទៃខាងក្រោយ (Remove BG)", callback_data='remove_bg')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     text = '👋 **សួស្តី! ខ្ញុំជាជំនួយការឯកសារឆ្លាតវៃ។**\n\nតើថ្ងៃនេះអ្នកចង់ឱ្យខ្ញុំជួយរៀបចំអ្វីដែរ?'
@@ -405,10 +405,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
 # ==========================================
-# Handlers (ការចាប់យកសកម្មភាពអ្នកប្រើប្រាស់គ្រប់មុខងារទាំងអស់)
+# Handlers
 # ==========================================
-
-# --- Text to Speech ---
 async def start_tts(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
     try: await query.message.delete() 
@@ -423,7 +421,6 @@ async def receive_tts_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     await text_to_speech_task(update.effective_chat.id, text, msg, context)
     return ConversationHandler.END
 
-# --- Translate ---
 async def start_translate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
     try: await query.message.delete()
@@ -438,7 +435,6 @@ async def receive_translate_text(update: Update, context: ContextTypes.DEFAULT_T
     await translate_text_task(update.effective_chat.id, text, msg, context)
     return ConversationHandler.END
 
-# --- Remove BG ---
 async def start_remove_bg(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
     try: await query.message.delete()
@@ -459,7 +455,6 @@ async def receive_remove_bg_image(update: Update, context: ContextTypes.DEFAULT_
     await remove_bg_task(update.effective_chat.id, file_path, msg, context)
     return ConversationHandler.END
 
-# --- PDF to Word ---
 async def start_pdf_to_word(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
     try: await query.message.delete()
@@ -477,7 +472,6 @@ async def receive_pdf_for_word(update: Update, context: ContextTypes.DEFAULT_TYP
     await pdf_to_word_task(update.effective_chat.id, file_path, msg, context)
     return ConversationHandler.END
 
-# --- Media Downloader ---
 async def start_media_downloader(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
     try: await query.message.delete()
@@ -492,7 +486,6 @@ async def receive_media_url(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     await download_media_task(update.effective_chat.id, url, msg, context)
     return ConversationHandler.END
 
-# --- PDF to Image ---
 async def start_pdf_to_img(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
     keyboard = [[InlineKeyboardButton("➡️ JPG", callback_data='fmt_jpeg'),
@@ -523,7 +516,6 @@ async def receive_pdf_for_img(update: Update, context: ContextTypes.DEFAULT_TYPE
     await pdf_to_img_task(update.effective_chat.id, file_path, msg, context, fmt)
     return ConversationHandler.END
 
-# --- Merge PDF ---
 async def start_merge(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
     context.user_data['merge_files'] = []
@@ -552,7 +544,6 @@ async def done_merging(update, context):
     context.user_data.clear()
     return ConversationHandler.END
 
-# --- Split PDF ---
 async def start_split(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
     try: await query.message.delete()
@@ -578,7 +569,6 @@ async def receive_split_range(update, context):
     context.user_data.clear()
     return ConversationHandler.END
 
-# --- Compress PDF ---
 async def start_compress(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
     try: await query.message.delete()
@@ -596,7 +586,6 @@ async def receive_pdf_for_compress(update: Update, context: ContextTypes.DEFAULT
     await compress_pdf_task(update.effective_chat.id, file_path, msg, context)
     return ConversationHandler.END
 
-# --- Image to PDF ---
 async def start_img_to_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
     context.user_data['img_to_pdf_files'] = []
@@ -625,7 +614,6 @@ async def done_img_to_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     context.user_data.clear()
     return ConversationHandler.END
 
-# --- Image to Text (OCR) ---
 async def start_img_to_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
     try: await query.message.delete()
@@ -643,7 +631,6 @@ async def receive_img_for_text(update: Update, context: ContextTypes.DEFAULT_TYP
     await img_to_text_task(update.effective_chat.id, file_path, msg, context)
     return ConversationHandler.END
 
-# --- Audio Converter ---
 def create_format_buttons(formats, prefix, columns=3):
     buttons = [InlineKeyboardButton(f"{fmt.upper()}", callback_data=f"{prefix}_{fmt.lower()}") for fmt in formats]
     keyboard = [buttons[i:i + columns] for i in range(0, len(buttons), columns)]
@@ -680,7 +667,6 @@ async def receive_audio_for_conversion(update: Update, context: ContextTypes.DEF
     await media_conversion_task(update.effective_chat.id, file_path, output_format, msg, context, media_type='audio')
     return ConversationHandler.END
 
-# --- Video Converter ---
 async def start_video_converter(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
     video_formats = ['AVI', 'MKV', 'MOV', 'MP4', 'WEBM']
@@ -711,7 +697,6 @@ async def receive_video_for_conversion(update: Update, context: ContextTypes.DEF
     await media_conversion_task(update.effective_chat.id, file_path, output_format, msg, context, media_type='video')
     return ConversationHandler.END
 
-# --- Archive Manager ---
 async def start_archive_manager(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
     keyboard = [
@@ -775,7 +760,6 @@ async def receive_archive_to_extract(update: Update, context: ContextTypes.DEFAU
     await extract_archive_task(update.effective_chat.id, file_path, msg, context)
     return ConversationHandler.END
 
-# --- Cancel Command ---
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data.clear()
     if update.callback_query:
@@ -788,7 +772,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ConversationHandler.END
 
 # ==========================================
-# Main Application Runner (Polling Mode សម្រាប់ VM)
+# Main Application (ប្រព័ន្ធ Polling)
 # ==========================================
 def main() -> None:
     application = Application.builder().token(BOT_TOKEN).read_timeout(30).post_init(setup_commands).build()
@@ -843,6 +827,9 @@ def main() -> None:
     application.add_handler(CommandHandler("help", help_command))
     
     print(">>> Bot កំពុងដំណើរការដោយប្រព័ន្ធ Polling លើម៉ាស៊ីន VM...")
-    application.run_polling
+    
+    # ទីនេះហើយគឺជាកន្លែងដែលត្រូវបានកែប្រែឱ្យវាឈរចាំស្តាប់សារជានិច្ច មិនឱ្យបិទខ្លួនឯង
+    application.run_polling(drop_pending_updates=True, close_loop=False)
+
 if __name__ == "__main__":
     main()
