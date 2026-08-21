@@ -20,22 +20,29 @@ from PIL import Image
 import pytesseract
 from typing import Final
 
+# ==========================================
 # នាំចូល Library មូលដ្ឋាន
+# ==========================================
 try:
     from PyPDF2 import PdfReader, PdfWriter, PdfMerger
     from pdf2image import convert_from_path
     from pdf2docx import Converter
     import yt_dlp
     from gtts import gTTS
-except ImportError:
-    print("!!! កំហុស៖ សូមប្រាកដថាបានតម្លើង Library ទាំងអស់")
+except Exception as e:
+    print(f"!!! កំហុសពេលទាញយក Library: {e}")
     sys.exit(1)
 
 BOT_TOKEN: Final = os.environ.get("BOT_TOKEN", "") 
 MAX_FILE_SIZE: Final = 50 * 1024 * 1024 # 50 MB
-WEBHOOK_URL: Final = os.environ.get("CLOUD_RUN_URL", "") 
-PORT: Final = int(os.environ.get("PORT", "8080")) 
 
+if not BOT_TOKEN:
+    print(f"!!! កំហុស៖ បាត់ BOT_TOKEN ។ សូមពិនិត្យមើលការកំណត់ម្តងទៀត។")
+    sys.exit(1)
+
+# ==========================================
+# កំណត់ State សម្រាប់ការសន្ទនា
+# ==========================================
 (SELECT_ACTION, WAITING_PDF_TO_IMG_FORMAT, WAITING_PDF_TO_IMG_FILE,
  WAITING_FOR_MERGE, WAITING_FOR_SPLIT_FILE, WAITING_FOR_SPLIT_RANGE,
  WAITING_FOR_COMPRESS, WAITING_FOR_PDF_TO_WORD, WAITING_FOR_IMG_TO_PDF,
@@ -69,8 +76,7 @@ def warmup_services():
         _ = urllib.parse.quote("warmup") 
         logging.info(">>> កម្តៅម៉ាស៊ីនរួចរាល់! លឿនដូចហោះ!")
     except SystemExit:
-        # ខែលការពារកម្រិតខ្ពស់៖ ការពារមិនឱ្យ rembg សម្លាប់ Bot ពេលរកឯកសារមិនឃើញ
-        logging.error("!!! រកមិនឃើញកញ្ចប់ rembg[cpu] ទេ។ សូមពិនិត្យ requirements.txt ម្តងទៀត។ (តែមុខងារផ្សេងៗនៅដំណើរការធម្មតា)")
+        logging.error("!!! រកមិនឃើញកញ្ចប់ rembg[cpu] ទេ។ សូមពិនិត្យ requirements.txt ម្តងទៀត។")
     except Exception as e:
         logging.error(f"Warm-up Error: {e}")
 
@@ -132,7 +138,7 @@ async def pdf_to_word_task(chat_id, file_path, msg, context):
         await context.bot.edit_message_text("កំពុងបំប្លែង PDF ទៅ Word (កម្លាំង CPU ពេញ)... 📝", chat_id=chat_id, message_id=msg.message_id)
         def do_pdf_word():
             cv = Converter(file_path)
-            cv.convert(output_path, multi_processing=True, cpu_count=2) # ការងារកម្រិតកំពូល
+            cv.convert(output_path, multi_processing=True, cpu_count=2)
             cv.close()
         await asyncio.to_thread(do_pdf_word)
         await context.bot.edit_message_text("បំប្លែងជោគជ័យ! ✅", chat_id=chat_id, message_id=msg.message_id)
@@ -151,7 +157,7 @@ async def download_media_task(chat_id, url, msg, context):
             'format': 'best[filesize<50M]/best',
             'noplaylist': True,
             'quiet': True,
-            'concurrent_fragment_downloads': 5 # ទាញយក ៥ បំណែកព្រមគ្នា
+            'concurrent_fragment_downloads': 5
         }
         if os.path.exists('cookies.txt'): ydl_opts['cookiefile'] = 'cookies.txt'
 
@@ -171,7 +177,7 @@ async def pdf_to_img_task(chat_id, file_path, msg, context, fmt):
     try:
         await context.bot.edit_message_text("កំពុងបំប្លែងជា រូបភាព (Multi-thread)... 🖼️", chat_id=chat_id, message_id=msg.message_id)
         def do_pdf_img():
-            return convert_from_path(file_path, dpi=150, fmt=fmt, thread_count=2) # កាត់បន្ថយ DPI និងប្រើ 2 Threads
+            return convert_from_path(file_path, dpi=150, fmt=fmt, thread_count=2)
         images = await asyncio.to_thread(do_pdf_img)
         
         await context.bot.edit_message_text(f"បំប្លែងបាន {len(images)} ទំព័រ។ កំពុងផ្ញើ... ✅", chat_id=chat_id, message_id=msg.message_id)
@@ -277,7 +283,7 @@ async def img_to_text_task(chat_id, file_path, msg, context):
         await context.bot.edit_message_text("កំពុងអានអក្សរពីរូបភាព... 📖", chat_id=chat_id, message_id=msg.message_id)
         def do_ocr():
             image = Image.open(file_path)
-            custom_config = r'--oem 3 --psm 3' # ដោះសោរល្បឿន OCR
+            custom_config = r'--oem 3 --psm 3'
             return pytesseract.image_to_string(image, lang='khm+eng', config=custom_config)
         text = await asyncio.to_thread(do_ocr)
         
@@ -296,7 +302,6 @@ async def media_conversion_task(chat_id, file_path, output_format, msg, context,
     try:
         await context.bot.edit_message_text(f"កំពុងបំប្លែងទៅ {output_format.upper()} (Max Speed)... 🎬", chat_id=chat_id, message_id=msg.message_id)
         def do_convert():
-            # ប្រើកម្លាំង CPU ទាំងអស់ដែលមាន (threads=0) និង preset ultrafast
             ffmpeg.input(file_path).output(output_path, preset='ultrafast', threads=0).run(overwrite_output=True)
         await asyncio.to_thread(do_convert)
         
@@ -314,7 +319,6 @@ async def create_zip_task(chat_id, file_paths, msg, context):
     try:
         await context.bot.edit_message_text("កំពុងបង្កើត ZIP ផ្លេកបន្ទោរ... 📦", chat_id=chat_id, message_id=msg.message_id)
         def do_zip():
-            # កំណត់កម្រិត compresslevel=1 ដើម្បីឱ្យវាខ្ចប់បានលឿនបំផុត
             with zipfile.ZipFile(output_path, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=1) as zipf:
                 for p in file_paths: zipf.write(p, os.path.basename(p))
         await asyncio.to_thread(do_zip)
@@ -355,7 +359,7 @@ async def extract_archive_task(chat_id, file_path, msg, context):
         if os.path.isdir(extract_dir): shutil.rmtree(extract_dir)
 
 # ==========================================
-# UI / UX និង Menu Start
+# UI / UX និង Menu Start (គ្រប់មុខងារទាំងអស់)
 # ==========================================
 async def setup_commands(application: Application):
     commands = [
@@ -397,12 +401,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return SELECT_ACTION
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    help_text = "🛠 **របៀបប្រើប្រាស់ប្រព័ន្ធជំនួយការឯកសារ** 🛠\n\n⚠️ **កំណត់សម្គាល់៖** ឯកសារត្រូវមានទំហំមិនលើសពី **50MB** ឡើយ។ វាយបញ្ជា `/cancel` ដើម្បីបោះបង់សកម្មភាព។"
+    help_text = "🛠 **របៀបប្រើប្រាស់ប្រព័ន្ធជំនួយការឯកសារ** 🛠\n\n⚠️ **កំណត់សម្គាល់៖** ឯកសារត្រូវមានទំហំមិនលើសពី **50MB** ឡើយ។ វាយបញ្ជា `/cancel` ដើម្បីបោះបង់សកម្មភាពដែលគាំង។"
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
 # ==========================================
-# Handlers (មានបំពាក់ប្រព័ន្ធការពារ Duplicate)
+# Handlers (ការចាប់យកសកម្មភាពអ្នកប្រើប្រាស់គ្រប់មុខងារទាំងអស់)
 # ==========================================
+
+# --- Text to Speech ---
 async def start_tts(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
     try: await query.message.delete() 
@@ -417,6 +423,7 @@ async def receive_tts_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     await text_to_speech_task(update.effective_chat.id, text, msg, context)
     return ConversationHandler.END
 
+# --- Translate ---
 async def start_translate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
     try: await query.message.delete()
@@ -431,6 +438,7 @@ async def receive_translate_text(update: Update, context: ContextTypes.DEFAULT_T
     await translate_text_task(update.effective_chat.id, text, msg, context)
     return ConversationHandler.END
 
+# --- Remove BG ---
 async def start_remove_bg(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
     try: await query.message.delete()
@@ -451,6 +459,7 @@ async def receive_remove_bg_image(update: Update, context: ContextTypes.DEFAULT_
     await remove_bg_task(update.effective_chat.id, file_path, msg, context)
     return ConversationHandler.END
 
+# --- PDF to Word ---
 async def start_pdf_to_word(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
     try: await query.message.delete()
@@ -468,6 +477,7 @@ async def receive_pdf_for_word(update: Update, context: ContextTypes.DEFAULT_TYP
     await pdf_to_word_task(update.effective_chat.id, file_path, msg, context)
     return ConversationHandler.END
 
+# --- Media Downloader ---
 async def start_media_downloader(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
     try: await query.message.delete()
@@ -482,6 +492,7 @@ async def receive_media_url(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     await download_media_task(update.effective_chat.id, url, msg, context)
     return ConversationHandler.END
 
+# --- PDF to Image ---
 async def start_pdf_to_img(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
     keyboard = [[InlineKeyboardButton("➡️ JPG", callback_data='fmt_jpeg'),
@@ -512,6 +523,7 @@ async def receive_pdf_for_img(update: Update, context: ContextTypes.DEFAULT_TYPE
     await pdf_to_img_task(update.effective_chat.id, file_path, msg, context, fmt)
     return ConversationHandler.END
 
+# --- Merge PDF ---
 async def start_merge(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
     context.user_data['merge_files'] = []
@@ -540,6 +552,7 @@ async def done_merging(update, context):
     context.user_data.clear()
     return ConversationHandler.END
 
+# --- Split PDF ---
 async def start_split(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
     try: await query.message.delete()
@@ -565,6 +578,7 @@ async def receive_split_range(update, context):
     context.user_data.clear()
     return ConversationHandler.END
 
+# --- Compress PDF ---
 async def start_compress(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
     try: await query.message.delete()
@@ -582,6 +596,7 @@ async def receive_pdf_for_compress(update: Update, context: ContextTypes.DEFAULT
     await compress_pdf_task(update.effective_chat.id, file_path, msg, context)
     return ConversationHandler.END
 
+# --- Image to PDF ---
 async def start_img_to_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
     context.user_data['img_to_pdf_files'] = []
@@ -610,6 +625,7 @@ async def done_img_to_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     context.user_data.clear()
     return ConversationHandler.END
 
+# --- Image to Text (OCR) ---
 async def start_img_to_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
     try: await query.message.delete()
@@ -623,10 +639,11 @@ async def receive_img_for_text(update: Update, context: ContextTypes.DEFAULT_TYP
     file = await file_obj.get_file()
     file_path = f"temp_{file.file_id}.jpg"
     await file.download_to_drive(file_path)
-    msg = await update.message.reply_text("✅ ទទួលបានរូបភាព! កំពុងបំប្លែងទៅជាអក្សរ...")
+    msg = await update.message.reply_text("✅ ទទួលបានរូបភាព! កំពុងអានអក្សរ (OCR)...")
     await img_to_text_task(update.effective_chat.id, file_path, msg, context)
     return ConversationHandler.END
 
+# --- Audio Converter ---
 def create_format_buttons(formats, prefix, columns=3):
     buttons = [InlineKeyboardButton(f"{fmt.upper()}", callback_data=f"{prefix}_{fmt.lower()}") for fmt in formats]
     keyboard = [buttons[i:i + columns] for i in range(0, len(buttons), columns)]
@@ -663,6 +680,7 @@ async def receive_audio_for_conversion(update: Update, context: ContextTypes.DEF
     await media_conversion_task(update.effective_chat.id, file_path, output_format, msg, context, media_type='audio')
     return ConversationHandler.END
 
+# --- Video Converter ---
 async def start_video_converter(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
     video_formats = ['AVI', 'MKV', 'MOV', 'MP4', 'WEBM']
@@ -693,6 +711,7 @@ async def receive_video_for_conversion(update: Update, context: ContextTypes.DEF
     await media_conversion_task(update.effective_chat.id, file_path, output_format, msg, context, media_type='video')
     return ConversationHandler.END
 
+# --- Archive Manager ---
 async def start_archive_manager(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query; await query.answer()
     keyboard = [
@@ -756,23 +775,22 @@ async def receive_archive_to_extract(update: Update, context: ContextTypes.DEFAU
     await extract_archive_task(update.effective_chat.id, file_path, msg, context)
     return ConversationHandler.END
 
+# --- Cancel Command ---
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data.clear()
     if update.callback_query:
         await update.callback_query.answer()
         try: await update.callback_query.message.delete()
         except Exception: pass
-        await context.bot.send_message(chat_id=update.effective_chat.id, text="ប្រតិបត្តិការត្រូវបានបោះបង់។ វាយ /start ដើម្បីចាប់ផ្តើមថ្មី។")
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="ប្រតិបត្តិការត្រូវបានបោះបង់។ វាយ /start ដើម្បីបញ្ជាជាថ្មី។")
     else:
-        await update.message.reply_text("ប្រតិបត្តិការត្រូវបានបោះបង់។ វាយ /start ដើម្បីចាប់ផ្តើមថ្មី។")
+        await update.message.reply_text("ប្រតិបត្តិការត្រូវបានបោះបង់។ វាយ /start ដើម្បីបញ្ជាជាថ្មី។")
     return ConversationHandler.END
 
-# --- Main Application Runner ---
+# ==========================================
+# Main Application Runner (Polling Mode សម្រាប់ VM)
+# ==========================================
 def main() -> None:
-    if not BOT_TOKEN or not WEBHOOK_URL:
-        print("!!! កំហុស៖ BOT_TOKEN ឬ CLOUD_RUN_URL មិនត្រូវបានកំណត់។")
-        sys.exit(1)
-
     application = Application.builder().token(BOT_TOKEN).read_timeout(30).post_init(setup_commands).build()
     
     conv_handler = ConversationHandler(
@@ -824,10 +842,8 @@ def main() -> None:
     application.add_handler(conv_handler)
     application.add_handler(CommandHandler("help", help_command))
     
-    FULL_WEBHOOK_URL = f"{WEBHOOK_URL.rstrip('/')}/{BOT_TOKEN}"
-    
-    print(f">>> Bot កំពុងដំណើរការដោយ Webhook នៅលើ Port: {PORT}")
-    application.run_webhook(listen="0.0.0.0", port=PORT, url_path=BOT_TOKEN, webhook_url=FULL_WEBHOOK_URL)
+    print(">>> Bot កំពុងដំណើរការដោយប្រព័ន្ធ Polling លើម៉ាស៊ីន VM...")
+    application.run_polling(allowed_updates=Update.ALL, drop_pending_updates=True)
 
 if __name__ == "__main__":
     main()
